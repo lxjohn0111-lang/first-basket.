@@ -1,0 +1,377 @@
+// All sounds are synthesised at load time and pre-rendered to AudioBuffers (the
+// First Touch audio approach), so a bounce, a rim clang or a swish plays on the same
+// frame as the simulated contact. No audio files are used.
+const SR = 44100;
+
+function mkRand(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2147483648 - 1; }; }
+
+function onePoleLP(buf, cutoff) {
+  const a = Math.exp(-2 * Math.PI * cutoff / SR);
+  let y = 0;
+  for (let i = 0; i < buf.length; i++) { y = (1 - a) * buf[i] + a * y; buf[i] = y; }
+}
+function onePoleHP(buf, cutoff) {
+  const a = Math.exp(-2 * Math.PI * cutoff / SR);
+  let y = 0, px = 0;
+  for (let i = 0; i < buf.length; i++) { const x = buf[i]; y = a * (y + x - px); px = x; buf[i] = y; }
+}
+function bandpass(buf, f, q) {
+  // RBJ biquad band-pass
+  const w = 2 * Math.PI * f / SR, al = Math.sin(w) / (2 * q), c = Math.cos(w);
+  const b0 = al, b2 = -al, a0 = 1 + al, a1 = -2 * c, a2 = 1 - al;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const x = buf[i];
+    const y = (b0 * x + b2 * x2 - a1 * y1 - a2 * y2) / a0;
+    x2 = x1; x1 = x; y2 = y1; y1 = y; buf[i] = y;
+  }
+}
+function normalize(buf, peak = 0.9) {
+  let m = 0;
+  for (let i = 0; i < buf.length; i++) m = Math.max(m, Math.abs(buf[i]));
+  if (m > 0) for (let i = 0; i < buf.length; i++) buf[i] *= peak / m;
+  return buf;
+}
+
+// ---------------------------------------------------------------- recipes
+function kick(dur, f0, f1, click, noiseAmt, seed) {
+  const n = Math.floor(SR * dur), b = new Float32Array(n), r = mkRand(seed);
+  let ph = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const f = f1 + (f0 - f1) * Math.exp(-t * 38);
+    ph += 2 * Math.PI * f / SR;
+    const env = Math.exp(-t * (dur > 0.12 ? 26 : 40));
+    b[i] = Math.sin(ph) * env + r() * noiseAmt * Math.exp(-t * 140) + (i < SR * 0.004 ? r() * click : 0);
+  }
+  onePoleLP(b, 5000);
+  return normalize(b, 0.95);
+}
+function clang(seed) {
+  const n = Math.floor(SR * 1.2), b = new Float32Array(n), r = mkRand(seed);
+  const parts = [[523, 1], [1320, 0.6], [2130, 0.45], [3310, 0.3], [4870, 0.2]];
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let v = 0;
+    for (const [f, a] of parts) v += Math.sin(2 * Math.PI * f * t) * a * Math.exp(-t * (3 + f / 900));
+    b[i] = v + r() * 0.3 * Math.exp(-t * 120);
+  }
+  return normalize(b, 0.8);
+}
+function noiseBurst(dur, lp, hp, attack, decay, seed) {
+  const n = Math.floor(SR * dur), b = new Float32Array(n), r = mkRand(seed);
+  for (let i = 0; i < n; i++) { const t = i / SR; b[i] = r() * Math.min(1, t / attack) * Math.exp(-t * decay); }
+  if (lp) onePoleLP(b, lp);
+  if (hp) onePoleHP(b, hp);
+  return normalize(b, 0.8);
+}
+function whistle(pattern) {
+  const n = Math.floor(SR * pattern.reduce((a, [d, g]) => a + d + g, 0)), b = new Float32Array(n);
+  let i0 = 0;
+  for (const [d, gap] of pattern) {
+    const len = Math.floor(SR * d);
+    let ph = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / SR;
+      const f = 2950 + 90 * Math.sin(2 * Math.PI * 28 * t) + 40 * Math.sin(2 * Math.PI * 7 * t);
+      ph += 2 * Math.PI * f / SR;
+      const env = Math.min(1, t / 0.02) * Math.min(1, (d - t) / 0.04);
+      b[i0 + i] = (Math.sin(ph) * 0.7 + Math.sin(ph * 2) * 0.12) * env;
+    }
+    i0 += len + Math.floor(SR * gap);
+  }
+  return normalize(b, 0.55);
+}
+function crowdLoop(seed, dur = 6) {
+  const n = Math.floor(SR * dur), b = new Float32Array(n), r = mkRand(seed);
+  for (let i = 0; i < n; i++) b[i] = r();
+  const voices = new Float32Array(n);
+  // murmur: several band-passed noise layers with slow amplitude drift
+  for (const [f, q, g] of [[420, 1.2, 1], [900, 1.5, 0.8], [1800, 2, 0.4], [260, 0.9, 0.7]]) {
+    const layer = b.slice();
+    bandpass(layer, f, q);
+    const ph = r() * 6;
+    for (let i = 0; i < n; i++) voices[i] += layer[i] * g * (0.75 + 0.25 * Math.sin(2 * Math.PI * (i / n) * 3 + ph));
+  }
+  // seamless loop: crossfade the ends
+  const fade = Math.floor(SR * 0.5);
+  for (let i = 0; i < fade; i++) { const t = i / fade; voices[i] = voices[i] * t + voices[n - fade + i] * (1 - t); }
+  return normalize(voices.subarray(0, n - fade), 0.6);
+}
+function cheer(seed, dur = 3.2) {
+  const n = Math.floor(SR * dur), b = new Float32Array(n), r = mkRand(seed);
+  for (let i = 0; i < n; i++) b[i] = r();
+  const out = new Float32Array(n);
+  for (const [f, q, g] of [[700, 1.4, 1], [1300, 1.8, 0.7], [2500, 2.2, 0.35], [380, 1, 0.6]]) {
+    const layer = b.slice(); bandpass(layer, f, q);
+    for (let i = 0; i < n; i++) out[i] += layer[i] * g;
+  }
+  for (let i = 0; i < n; i++) { const t = i / SR; out[i] *= Math.min(1, t / 0.25) * Math.exp(-Math.max(0, t - 1.2) * 1.3); }
+  return normalize(out, 0.85);
+}
+function groan(seed) {
+  const n = Math.floor(SR * 1.6), b = new Float32Array(n), r = mkRand(seed);
+  for (let i = 0; i < n; i++) b[i] = r();
+  const out = new Float32Array(n);
+  for (let v = 0; v < 3; v++) {
+    const layer = b.slice(); bandpass(layer, 380 + v * 180, 3);
+    for (let i = 0; i < n; i++) out[i] += layer[i];
+  }
+  for (let i = 0; i < n; i++) { const t = i / SR; out[i] *= Math.min(1, t / 0.15) * Math.exp(-t * 1.6) * (1 - 0.3 * t / 1.6); }
+  return normalize(out, 0.7);
+}
+function blip(f, dur, seed) {
+  const n = Math.floor(SR * dur), b = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const t = i / SR; b[i] = Math.sin(2 * Math.PI * f * t) * Math.exp(-t * 30) * Math.min(1, t / 0.003); }
+  void seed;
+  return normalize(b, 0.5);
+}
+// short UI tones: [frequency start, frequency end, start time, duration, level]
+function tones(notes, len) {
+  const n = Math.floor(SR * len), b = new Float32Array(n);
+  for (const [f0, f1, t0, d, lv] of notes) {
+    let ph = 0;
+    const i0 = Math.floor(t0 * SR), i1 = Math.min(n, Math.floor((t0 + d) * SR));
+    for (let i = i0; i < i1; i++) {
+      const t = (i - i0) / SR, u = t / d;
+      ph += (f0 + (f1 - f0) * u) / SR;
+      const env = Math.min(1, t / 0.004) * Math.exp(-u * 4);
+      b[i] += (Math.sin(2 * Math.PI * ph) + 0.25 * Math.sin(4 * Math.PI * ph)) * env * lv;
+    }
+  }
+  return normalize(b, 0.5);
+}
+function swoosh(len) {
+  const n = Math.floor(SR * len), b = new Float32Array(n);
+  let lp = 0, s = 12345;
+  for (let i = 0; i < n; i++) {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    const u = i / n, k = 0.04 + 0.5 * Math.sin(Math.PI * u) ** 2;
+    lp += ((s / 4294967296) * 2 - 1 - lp) * k;
+    b[i] = lp * Math.sin(Math.PI * u);
+  }
+  return normalize(b, 0.35);
+}
+function shout(seed) {
+  // a short "hey!" style call made from a formant-filtered buzz
+  const n = Math.floor(SR * 0.28), src = new Float32Array(n);
+  let ph = 0;
+  for (let i = 0; i < n; i++) { const t = i / SR; const f = 210 - 60 * t; ph += f / SR; src[i] = (ph % 1) * 2 - 1; }
+  const out = new Float32Array(n);
+  for (const [f, q, g] of [[650, 5, 1], [1700, 7, 0.6], [2600, 8, 0.3]]) {
+    const layer = src.slice(); bandpass(layer, f, q);
+    for (let i = 0; i < n; i++) out[i] += layer[i] * g;
+  }
+  for (let i = 0; i < n; i++) { const t = i / SR; out[i] *= Math.min(1, t / 0.02) * Math.exp(-t * 7); }
+  void seed;
+  return normalize(out, 0.6);
+}
+
+// ---------------------------------------------------------------- basketball recipes
+// the ball on hardwood: a low thump with a short ring from the ball's shell
+function ballBounce(seed) {
+  const n = Math.floor(SR * 0.22), b = new Float32Array(n), r = mkRand(seed);
+  let ph = 0, ph2 = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const f = 95 + 80 * Math.exp(-t * 60);
+    ph += 2 * Math.PI * f / SR; ph2 += 2 * Math.PI * 530 / SR;
+    b[i] = Math.sin(ph) * Math.exp(-t * 22) + 0.22 * Math.sin(ph2) * Math.exp(-t * 30) + r() * 0.35 * Math.exp(-t * 180);
+  }
+  onePoleLP(b, 4200);
+  return normalize(b, 0.95);
+}
+// sneaker squeak: a bright chirp with a little wobble
+function squeak(seed, f0, f1, dur) {
+  const n = Math.floor(SR * dur), b = new Float32Array(n), r = mkRand(seed);
+  let ph = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR, u = t / dur;
+    const f = f0 + (f1 - f0) * u + 120 * Math.sin(2 * Math.PI * 55 * t);
+    ph += 2 * Math.PI * f / SR;
+    const env = Math.min(1, t / 0.012) * Math.pow(1 - u, 1.4);
+    b[i] = (Math.sin(ph) + 0.4 * Math.sin(ph * 2.01) + 0.2 * Math.sin(ph * 3.02)) * env + r() * 0.05 * env;
+  }
+  onePoleHP(b, 900);
+  return normalize(b, 0.5);
+}
+// rim: a bright, short metallic ring
+function rimClang(seed) {
+  const n = Math.floor(SR * 0.7), b = new Float32Array(n), r = mkRand(seed);
+  const parts = [[612, 1], [1530, 0.7], [2410, 0.45], [3720, 0.3], [5100, 0.15]];
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let v = 0;
+    for (const [f, a] of parts) v += Math.sin(2 * Math.PI * f * t) * a * Math.exp(-t * (6 + f / 600));
+    b[i] = v + r() * 0.5 * Math.exp(-t * 160);
+  }
+  return normalize(b, 0.75);
+}
+// backboard: a hollow thud with a rattle
+function boardThud(seed) {
+  const n = Math.floor(SR * 0.4), b = new Float32Array(n), r = mkRand(seed);
+  let ph = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    ph += 2 * Math.PI * (130 + 60 * Math.exp(-t * 40)) / SR;
+    b[i] = Math.sin(ph) * Math.exp(-t * 16) + r() * 0.45 * Math.exp(-t * 26) * (0.6 + 0.4 * Math.sin(2 * Math.PI * 38 * t));
+  }
+  onePoleLP(b, 2600);
+  return normalize(b, 0.8);
+}
+// net: a soft swish
+function swish(seed) {
+  const n = Math.floor(SR * 0.42), b = new Float32Array(n), r = mkRand(seed);
+  for (let i = 0; i < n; i++) { const t = i / SR; b[i] = r() * Math.min(1, t / 0.03) * Math.exp(-t * 7); }
+  bandpass(b, 2600, 0.9);
+  onePoleHP(b, 700);
+  return normalize(b, 0.7);
+}
+// hands on the ball: a slap
+function slap(seed, f = 1700) {
+  const n = Math.floor(SR * 0.09), b = new Float32Array(n), r = mkRand(seed);
+  for (let i = 0; i < n; i++) { const t = i / SR; b[i] = r() * Math.exp(-t * 60) + Math.sin(2 * Math.PI * 240 * t) * 0.4 * Math.exp(-t * 50); }
+  bandpass(b, f, 0.8);
+  return normalize(b, 0.8);
+}
+// the game horn
+function horn(dur) {
+  const n = Math.floor(SR * dur), b = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const env = Math.min(1, t / 0.02) * Math.min(1, (dur - t) / 0.05);
+    let v = 0;
+    for (const f of [220, 277, 330]) v += ((t * f) % 1) * 2 - 1;
+    b[i] = v * env * 0.33;
+  }
+  onePoleLP(b, 2200);
+  return normalize(b, 0.6);
+}
+// a soft whoosh for a release
+function whoosh(seed, dur) {
+  const n = Math.floor(SR * dur), b = new Float32Array(n), r = mkRand(seed);
+  for (let i = 0; i < n; i++) { const t = i / SR, u = t / dur; b[i] = r() * Math.sin(Math.PI * u) ** 2; }
+  bandpass(b, 900, 0.7);
+  return normalize(b, 0.35);
+}
+function step(seed) {
+  const n = Math.floor(SR * 0.06), b = new Float32Array(n), r = mkRand(seed);
+  for (let i = 0; i < n; i++) { const t = i / SR; b[i] = (Math.sin(2 * Math.PI * 85 * t) * 0.8 + r() * 0.3) * Math.exp(-t * 55); }
+  onePoleLP(b, 900);
+  return normalize(b, 0.5);
+}
+
+export class AudioSystem {
+  constructor() {
+    this.ctx = null;
+    this.buffers = {};
+    this.vol = { master: 0.8, sfx: 0.9, crowd: 0.6 };
+    this.ready = false;
+    this.crowdLevel = 0.3;
+    this.muted = false;
+  }
+
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { this.ctx = new AC({ latencyHint: 'interactive' }); } catch (e) { return; }
+    const c = this.ctx;
+    this.master = c.createGain();
+    this.sfx = c.createGain();
+    this.crowd = c.createGain();
+    this.sfx.connect(this.master); this.crowd.connect(this.master); this.master.connect(c.destination);
+    const defs = {
+      bounce: ballBounce(1), bounce2: ballBounce(21),
+      squeak1: squeak(2, 2300, 3100, 0.14), squeak2: squeak(3, 3300, 2500, 0.18), squeak3: squeak(4, 2700, 3600, 0.1),
+      step1: step(5), step2: step(25),
+      rim: rimClang(6), board: boardThud(7), net: swish(8),
+      catch: slap(9, 1500), steal: slap(10, 2300), block: boardThud(31),
+      release: whoosh(11, 0.25), pass: whoosh(12, 0.18),
+      whistle: whistle([[0.32, 0]]),
+      whistleLong: whistle([[0.3, 0.12], [0.3, 0.12], [0.75, 0]]),
+      buzzer: horn(1.1),
+      crowd: crowdLoop(13),
+      cheer: cheer(14),
+      groan: groan(15),
+      ooh: groan(16),
+      ui: blip(1400, 0.06, 17),
+      ack: blip(1900, 0.09, 18),
+      shout: shout(19),
+      uiHover: tones([[2600, 2400, 0, 0.025, 0.5]], 0.03),
+      uiClick: tones([[900, 520, 0, 0.07, 1]], 0.08),
+      uiConfirm: tones([[660, 660, 0, 0.09, 0.9], [990, 990, 0.07, 0.16, 1]], 0.25),
+      uiError: tones([[300, 280, 0, 0.1, 1], [220, 200, 0.1, 0.16, 1]], 0.28),
+      uiSwoosh: swoosh(0.22),
+      uiReward: tones([[784, 784, 0, 0.1, 0.8], [988, 988, 0.08, 0.1, 0.8], [1319, 1319, 0.16, 0.3, 1]], 0.48),
+      perfect: tones([[1047, 1047, 0, 0.08, 0.7], [1568, 1568, 0.06, 0.18, 0.8]], 0.26),
+    };
+    for (const [k, data] of Object.entries(defs)) {
+      const buf = c.createBuffer(1, data.length, SR);
+      buf.copyToChannel(data, 0);
+      this.buffers[k] = buf;
+    }
+    this.applyVolumes();
+    this.ready = true;
+  }
+
+  resume() { if (this.ctx && this.ctx.state !== 'running' && !this.muted) this.ctx.resume().catch(() => {}); }
+  suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend().catch(() => {}); }
+  setMuted(m) { this.muted = m; if (m) this.suspend(); else this.resume(); }
+
+  setVolumes(v) { Object.assign(this.vol, v); this.applyVolumes(); }
+  // the hosting platform can silence the game (its mute setting, or while an ad plays);
+  // that wins over the in-game volume
+  setPlatformMute(m) { this.platformMute = !!m; this.applyVolumes(); }
+  applyVolumes() {
+    if (!this.ctx) return;
+    this.master.gain.value = this.platformMute ? 0 : this.vol.master;
+    this.sfx.gain.value = this.vol.sfx;
+    this.crowd.gain.value = this.vol.crowd;
+  }
+
+  play(name, o = {}) {
+    if (!this.ready || this.ctx.state !== 'running') return;
+    const buf = this.buffers[name];
+    if (!buf) return;
+    const c = this.ctx;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    if (o.rate) src.playbackRate.value = o.rate;
+    const g = c.createGain();
+    g.gain.value = o.gain ?? 1;
+    let node = g;
+    if (o.pan && c.createStereoPanner) {
+      const p = c.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, o.pan));
+      g.connect(p); node = p;
+    }
+    src.connect(g);
+    node.connect(o.group === 'crowd' ? this.crowd : this.sfx);
+    src.start();
+    return src;
+  }
+
+  startCrowd(level = 0.4) {
+    if (!this.ready) return;
+    this.stopCrowd();
+    const c = this.ctx;
+    this.crowdSrc = c.createBufferSource();
+    this.crowdSrc.buffer = this.buffers.crowd;
+    this.crowdSrc.loop = true;
+    this.crowdGain = c.createGain();
+    this.crowdGain.gain.value = 0;
+    this.crowdSrc.connect(this.crowdGain).connect(this.crowd);
+    this.crowdSrc.start();
+    this.baseCrowd = level;
+    this.setExcitement(0);
+  }
+  stopCrowd() {
+    if (this.crowdSrc) { try { this.crowdSrc.stop(); } catch (e) { /* already stopped */ } this.crowdSrc.disconnect(); this.crowdSrc = null; }
+  }
+  setExcitement(x) {
+    if (!this.crowdGain) return;
+    const v = this.baseCrowd * (0.45 + 0.9 * Math.min(1, x));
+    this.crowdGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.4);
+  }
+}

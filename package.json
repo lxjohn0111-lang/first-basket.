@@ -1,0 +1,17 @@
+{
+  "name": "courtside",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Courtside - a first-person 3D basketball game for the browser",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "watch": "node tools/build.mjs --watch",
+    "serve": "node server.js",
+    "test": "node tests/run.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "license": "MIT",
+  "type": "module"
+}
