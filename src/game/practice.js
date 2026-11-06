@@ -6,10 +6,10 @@
 // Like First Touch's tutorial: a small coach card, progress dots, stars, a timer bar,
 // an arrow toward an objective that is out of view, and Enter / a button to skip.
 import { CoachCard } from '../ui/coach.js';
-import { HOOP, SPOTS, isThree, distToHoop } from '../sim/constants.js';
+import { HOOP, SPOTS, distToHoop } from '../sim/constants.js';
 import { teamConfig, teamById, humanEntry } from './teams.js';
 import { startDribble } from '../sim/dribble.js';
-import { startShot, hasBall } from '../sim/actions.js';
+import { startShot } from '../sim/actions.js';
 import { sweetSpot, pressureOn } from '../sim/shooting.js';
 import { yawOf } from '../sim/vec.js';
 
@@ -56,7 +56,7 @@ class PracticeBase {
   frame() {}
   markers() {}
   dispose() { for (const u of this.unsub || []) u(); if (this.card) this.card.dispose(); }
-  finish() { const m = this.s.match; this.done = true; m.setPhase('over'); m.phaseT = 3.1; }
+  finish() { const m = this.s.match; this.done = true; m.setPhase('over'); m.phaseT = 3.1; if (this.card) { this.card.pointAt(null); this.card.show(false); } }
 }
 
 // ---------------------------------------------------------------- drills
@@ -250,4 +250,3 @@ export function makePractice(kind, app) {
   return new Drills(app);
 }
 
-export { isThree, hasBall };

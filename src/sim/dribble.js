@@ -50,7 +50,8 @@ function topPoint(p, hand, sf, low) {
 export function startDribble(p, hand, o = {}) {
   p.hand = hand;
   p.dribble = { t: 0, T: 0.5, td: 0.2, tu: 0.3, from: hand, to: hand, crossQueued: false, a: [0, 0.4, 0.86], b: [0, 0.5, BALL_R], c: [0, 0.4, 0.86], cross: false, low: 0, count: 0 };
-  newCycle(p, o.low || 0, o.fromPos);
+  // the first push starts from wherever the hands hold the ball (no jump to the hand)
+  newCycle(p, o.low || 0, o.fromPos || (p.holdLocal ? [...p.holdLocal] : null));
 }
 
 // begin the next push: the ball is in the `from` hand at the top of the bounce
@@ -65,7 +66,8 @@ export function newCycle(p, low = 0, fromLocal = null) {
   d.from = d.to;
   d.to = cross ? (d.from === 'L' ? 'R' : 'L') : d.from;
   p.hand = d.to;
-  const a = fromLocal || topPoint(p, d.from, sf, d.low);
+  // each push starts exactly where the last bounce ended, so speed changes never jump
+  const a = fromLocal || (d.count > 0 ? [...d.c] : topPoint(p, d.from, sf, d.low));
   const c = topPoint(p, d.to, sf, d.low);
   // bounce point: beside the dribbling foot and a little ahead (further ahead at speed);
   // a crossover bounces between the feet in front of the body

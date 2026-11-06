@@ -176,13 +176,13 @@ export class AI {
     const mv = clamp(p.speed / 6, 0, 1);
     const chance = makeChance(p, kind, d, pr, kind === 'layup' || kind === 'dunk' ? 0 : mv) * P.shot;
     const value = kind === 'three' ? 3 : 2;
-    let thr = 1.05 - (m.shotClock < 4 ? 0.6 : m.shotClock < 7 ? 0.22 : 0) - (kind === 'dunk' || kind === 'layup' ? 0.2 : kind === 'jumper' ? 0.12 : 0);
+    let thr = 1.05 - (m.shotClock < 4 ? 0.6 : m.shotClock < 7 ? 0.22 : 0) - (kind === 'dunk' || kind === 'layup' ? 0.2 : kind === 'jumper' ? 0.12 : 0) + (kind === 'three' && m.shotClock > 5 ? 0.15 : 0);
     // don't fire straight off the catch unless open
     if (held < 0.2 && kind !== 'layup' && kind !== 'dunk') thr += 0.08;
     const shotEV = chance * value;
     // the drive: an open lane to the rim (a beaten defender doesn't count)
     const lane = this.laneToRim(p);
-    const driveEV = lane > 0.5 && d > 2.6 ? 1.15 * (0.55 + 0.45 * (p.attrs.speed + p.attrs.handling) / 198) * (0.55 + 0.45 * P.aggression) : 0;
+    const driveEV = lane > 0.42 && d > 2.6 ? 1.25 * (0.55 + 0.45 * (p.attrs.speed + p.attrs.handling) / 198) * (0.55 + 0.45 * P.aggression) : 0;
     // the best pass: the receiver's shot as it will be once the defence recovers a little
     let pass = null, passEV = 0;
     for (const q of m.teams[p.team].players) {
@@ -332,7 +332,7 @@ export class AI {
     }
     if (!helping) {
       if (onBall) {
-        const gap = clamp(1.25 - 0.35 * P.aggression - (distToHoop(ai.obs.x, ai.obs.z) < 4 ? 0.2 : 0), 0.75, 1.3);
+        const gap = clamp(1.3 - 0.3 * P.aggression - (distToHoop(ai.obs.x, ai.obs.z) < 4 ? 0.15 : 0), 0.9, 1.3);
         tx = ai.obs.x + (hx / hl) * gap; tz = ai.obs.z + (hz / hl) * gap;
       } else {
         // sag toward the rim; further when the ball is on the other side

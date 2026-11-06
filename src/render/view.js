@@ -358,7 +358,7 @@ export class SceneView {
         const sp = Math.min(1, p.speed / 7);
         eye += Math.sin((p.prevGait + (p.gait - p.prevGait) * alpha) * Math.PI * 4) * 0.014 * sp * cam.bob;
       }
-      c.position.set(x + Math.sin(cam.yaw) * 0.1, eye, z + Math.cos(cam.yaw) * 0.1);
+      c.position.set(x + Math.sin(cam.yaw) * 0.02, eye, z + Math.cos(cam.yaw) * 0.02);
       if (cam.shake && this.shake > 0) {
         const s = this.shake * cam.shake;
         c.position.x += (Math.random() - 0.5) * 0.02 * s;

@@ -190,7 +190,7 @@ export function separatePlayers(players, now, ballOwner) {
       const b = players[j];
       const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z;
       const d2 = dx * dx + dz * dz;
-      const min = 0.62;
+      const min = a.isHuman || b.isHuman ? 0.7 : 0.62;
       if (d2 < min * min && d2 > 1e-8) {
         const d = Math.sqrt(d2);
         const push = min - d;
