@@ -320,6 +320,8 @@ class App {
     this.awaitingLock = false;
     clearTimeout(this.lockTimer);
     this.lockFails = (this.lockFails || 0) + 1;
+    // embedded in a frame that may not allow capturing the mouse: drag-to-look straight away
+    if (window.top !== window && this.session) { this.input.dragMode = true; this.unpause(); return; }
     if (this.session && this.paused) this.screens.clickToPlay({ resume: true, retry: this.lockFails });
   }
   toggleLock() {
