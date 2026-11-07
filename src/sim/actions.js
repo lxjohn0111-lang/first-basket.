@@ -45,7 +45,8 @@ function holdTarget(m, p, out) {
     if (a.kind === 'layup') return L(HOLD.gather, H.layup, (a.t - a.tg) / 0.42);
     if (a.kind === 'dunk') {
       // carried up toward the rim
-      const loc = toLocal(p, HOOP.X - 0.05, 0, HOOP.Z);
+      const sd = m.side(p.team);
+      const loc = toLocal(p, sd * (HOOP.X - 0.05), 0, HOOP.Z);
       const up = [clamp(loc[0], -0.25, 0.25), clamp(loc[1], 0.15, 0.55), BODY.REACH + 0.18];
       return L(HOLD.gather, up, (a.t - a.tg) / 0.3);
     }
@@ -81,7 +82,7 @@ export function startShot(m, p, o = {}) {
   p.action = {
     type: 'shot', kind, t: 0, t0: m.time, tg: m.ball.state === 'held' ? 0 : null,
     charging: !!o.charging, charge: 0, relCharge: null, releaseCharge: o.releaseCharge ?? spot.c,
-    aimYaw: o.aimYaw ?? yawOf(HOOP.X - p.pos.x, HOOP.Z - p.pos.z),
+    aimYaw: o.aimYaw ?? yawOf(m.side(p.team) * HOOP.X - p.pos.x, HOOP.Z - p.pos.z),
     spot, pressure, moving, value: shotValue(m, p, kind), released: false, jumped: false,
     lockMove: kind === 'layup' || kind === 'dunk' ? undefined : 3,
     from: { x: p.pos.x, z: p.pos.z },
@@ -109,7 +110,9 @@ function updateShot(m, p, a, dt) {
       else return;
     }
     const since = a.t - a.tg;
-    const hx = HOOP.X - p.pos.x, hz = HOOP.Z - p.pos.z, hd = Math.hypot(hx, hz) || 1;
+    const hx = m.side(p.team) * HOOP.X - p.pos.x, hz = HOOP.Z - p.pos.z, hd = Math.hypot(hx, hz) || 1;
+    // an AI shooter keeps squared up to the rim (the human aims with the view)
+    if (a.ai) a.aimYaw = yawOf(hx, hz);
     if (!a.jumped) {
       if (a.kind === 'jumper' || a.kind === 'three') {
         const h = p.jumpHeight() * 0.62;
@@ -165,8 +168,9 @@ function releaseShot(m, p, a) {
   const b = m.ball, now = m.time;
   a.released = true;
   a.rt = a.t;
+  p.shotSide = m.side(p.team);
   const charge = a.relCharge ?? a.charge;
-  const dx = HOOP.X - b.pos.x, dz = HOOP.Z - b.pos.z;
+  const dx = m.side(p.team) * HOOP.X - b.pos.x, dz = HOOP.Z - b.pos.z;
   if (a.kind === 'dunk' && Math.hypot(dx, dz) < 0.5 && b.pos.y > HOOP.Y + 0.08) {
     // slam: straight down through the ring
     b.release(dx * 4, -5.5, dz * 4, 0, 0, 0);
@@ -187,7 +191,7 @@ function releaseShot(m, p, a) {
   b.ignore = p; b.ignoreUntil = now + 0.35;
   p.noCatchUntil = now + RULES.SHOT_LOCK;
   b.lastTouch = { player: p, team: p.team, t: now };
-  b.shot = { shooter: p, team: p.team, kind: a.kind, value: a.value, t: now, rim: false, board: false, blocked: false, from: { ...a.from }, foul: null, grade: a.gradeInfo, charge, spot: a.spot };
+  b.shot = { shooter: p, team: p.team, side: m.side(p.team), kind: a.kind, value: a.value, t: now, rim: false, board: false, blocked: false, from: { ...a.from }, foul: null, grade: a.gradeInfo, charge, spot: a.spot };
   b.pass = null;
   m.events.emit('shot', { player: p, kind: a.kind, value: a.value, grade: a.gradeInfo, pressure: a.pressure, t: now });
 }
@@ -200,7 +204,8 @@ export function laneBlocked(m, p, tx, tz) {
     if (q.team === p.team) continue;
     const r = pointSegDistXZ(q.pos.x, q.pos.z, p.pos.x, p.pos.z, tx, tz);
     const along = r.t * L;
-    if (along < 0.5 || along > L - 0.4) continue;
+    // (a defender right on the passer can't get to it; one fronting the receiver can)
+    if (along < 0.35 || along > L + 0.3) continue;
     const risk = clamp((1.15 - r.d) / 0.9, 0, 1);
     if (risk > worst) { worst = risk; who = q; }
   }
@@ -242,7 +247,8 @@ function releasePass(m, p, a) {
   const P = b.pos;
   // lead the receiver: where they will be when the ball arrives
   let tx = q.pos.x, tz = q.pos.z;
-  const vh = a.kind === 'bounce' ? 7.6 + pass * 1.5 : a.kind === 'lob' ? 9 : 9.2 + pass * 2.4;
+  // a lob goes slower and higher (over the defence), dropping into the hands
+  const vh = a.kind === 'bounce' ? 7.6 + pass * 1.5 : a.kind === 'lob' ? 7.6 + pass * 1.2 : 9.2 + pass * 2.4;
   let T = 0;
   for (let i = 0; i < 3; i++) {
     const d = Math.hypot(tx - P.x, tz - P.z);
@@ -263,11 +269,12 @@ function releasePass(m, p, a) {
     vy = (BALL_R - P.y + 0.5 * G * T1 * T1) / T1;
     vx = ux * vh; vz = uz * vh;
   } else {
-    const ty = q.pos.y + 1.25;
+    const ty = q.pos.y + (a.kind === 'lob' ? 1.55 : 1.25);
+    // air drag slows a long pass: a touch more speed so it still gets there
     const Tf = d / vh;
+    const drag = 1 + 0.012 * vh * Tf * 0.5;
     vy = (ty - P.y + 0.5 * G * Tf * Tf) / Tf;
-    vx = ux * vh; vz = uz * vh;
-    if (a.kind === 'lob') vy += 0.6;
+    vx = ux * vh * drag; vz = uz * vh * drag;
   }
   vx *= 1 + rng.gauss() * err * 0.5; vz *= 1 + rng.gauss() * err * 0.5;
   b.release(vx, vy, vz, 0, 0, 0);

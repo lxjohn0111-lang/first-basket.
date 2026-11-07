@@ -64,8 +64,8 @@ export class ScoreboardTexture {
     this.key = '';
   }
   // home/away names, score, game clock, shot clock and possession arrow
-  update(home, away, score, clock, shot, poss, style, final = false) {
-    const key = `${home}|${away}|${score}|${clock}|${shot}|${poss}|${style}|${final}`;
+  update(home, away, score, clock, shot, poss, style, final = false, period = '') {
+    const key = `${home}|${away}|${score}|${clock}|${shot}|${poss}|${style}|${final}|${period}`;
     if (key === this.key) return;
     this.key = key;
     const c = this.ctx;
@@ -87,6 +87,12 @@ export class ScoreboardTexture {
     c.font = 'bold 54px "Arial Black", Arial, sans-serif';
     c.fillStyle = neo ? '#3ee0ff' : '#333';
     c.fillText(final ? 'FINAL' : clock, 256, 132);
+    // the quarter
+    if (period && !final) {
+      c.font = 'bold 30px "Arial Black", Arial, sans-serif';
+      c.fillStyle = neo ? '#ffd23f' : '#161616';
+      c.fillText(period, 256, 74);
+    }
     // possession arrow
     if (poss === 0 || poss === 1) {
       c.fillStyle = neo ? '#ffd23f' : '#161616';

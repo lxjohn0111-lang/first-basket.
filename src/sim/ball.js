@@ -1,6 +1,7 @@
 // The basketball. One authoritative model with explicit states:
 //   free     - physics: gravity, drag, spin, energy-losing bounces on the floor, a torus
 //              rim, the backboard box and the rim bracket, a soft net, and player bodies
+//              (both baskets: the one at the ball's end of the floor is tested)
 //   held     - in a player's hands (kinematic, placed by the holder's pose every step)
 //   dribble  - bouncing between a player's hand and the floor (kinematic, see dribble.js)
 //   dead     - frozen between plays (check ball, free-throw setup)
@@ -95,19 +96,22 @@ export class Ball {
     this.w.scale(Math.exp(-0.15 * h));
     const py = p.y;
     p.addScaled(v, h);
+    // the basket at this end of the floor
+    const s = p.x >= 0 ? 1 : -1, hx = s * HOOP.X;
     // a basket: the ball's centre drops through the rim from above, inside the ring
     if (py >= HOOP.Y && p.y < HOOP.Y && v.y < 0) {
       const t = (py - HOOP.Y) / (py - p.y || 1);
       const cx = this.prevX(t, h), cz = this.prevZ(t, h);
-      if (Math.hypot(cx - HOOP.X, cz - HOOP.Z) < HOOP.R - 0.01 && now - this.scoredAt > 1) {
+      if (Math.hypot(cx - hx, cz - HOOP.Z) < HOOP.R - 0.01 && now - this.scoredAt > 1) {
         this.scoredAt = now;
-        if (this.cb && !this.quiet) this.cb.score(this);
+        this.scoredSide = s;
+        if (this.cb && !this.quiet) this.cb.score(this, s);
       }
     }
     this.collideFloor(h);
-    this.collideRim();
-    this.collideBoard();
-    this.collideNet(h);
+    this.collideRim(hx);
+    this.collideBoard(s);
+    this.collideNet(h, hx);
     if (players && !this.quiet) this.collidePlayers(players, now);
   }
   prevX(t, h) { return this.pos.x - this.vel.x * h * (1 - t); }
@@ -153,14 +157,14 @@ export class Ball {
     }
   }
 
-  collideRim() {
+  collideRim(hx = HOOP.X) {
     const p = this.pos;
-    const dx = p.x - HOOP.X, dz = p.z - HOOP.Z;
+    const dx = p.x - hx, dz = p.z - HOOP.Z;
     if (Math.abs(p.y - HOOP.Y) > BALL_R + 0.05) return;
     const r = Math.hypot(dx, dz);
     if (r > RING + BALL_R + 0.05 || r < RING - BALL_R - 0.05) return;
     const ux = r > 1e-6 ? dx / r : 1, uz = r > 1e-6 ? dz / r : 0;
-    _c.set(HOOP.X + ux * RING, HOOP.Y, HOOP.Z + uz * RING);
+    _c.set(hx + ux * RING, HOOP.Y, HOOP.Z + uz * RING);
     const nx = p.x - _c.x, ny = p.y - _c.y, nz = p.z - _c.z;
     const d = Math.hypot(nx, ny, nz);
     const min = BALL_R + HOOP.TUBE;
@@ -169,33 +173,36 @@ export class Ball {
     this.contact(nx / d, ny / d, nz / d, BALL.RIM_E, 'rim');
   }
 
-  // axis-aligned box collider (closest point test covers faces, edges and corners)
-  collideBox(x0, x1, y0, y1, z0, z1, e, kind) {
+  // axis-aligned box collider (closest point test covers faces, edges and corners);
+  // boxes are given for the +X basket and mirrored for s = -1
+  collideBox(x0, x1, y0, y1, z0, z1, e, kind, s = 1) {
     const p = this.pos;
+    if (s < 0) { const a = -x1; x1 = -x0; x0 = a; }
     const cx = clamp(p.x, x0, x1), cy = clamp(p.y, y0, y1), cz = clamp(p.z, z0, z1);
     const nx = p.x - cx, ny = p.y - cy, nz = p.z - cz;
     const d = Math.hypot(nx, ny, nz);
     if (d >= BALL_R) return;
-    if (d < 1e-6) { p.x = x0 - BALL_R; this.contact(-1, 0, 0, e, kind); return; }
+    // centre inside the box: out the court side
+    if (d < 1e-6) { p.x = s > 0 ? x0 - BALL_R : x1 + BALL_R; this.contact(-s, 0, 0, e, kind); return; }
     p.x = cx + (nx / d) * BALL_R; p.y = cy + (ny / d) * BALL_R; p.z = cz + (nz / d) * BALL_R;
     this.contact(nx / d, ny / d, nz / d, e, kind);
   }
 
-  collideBoard() {
+  collideBoard(s = 1) {
     const p = this.pos;
-    if (p.x < HOOP.BOARD_X - 0.3 || p.y < HOOP.BOARD_Y0 - 0.3) return;
-    this.collideBox(HOOP.BOARD_X, HOOP.BOARD_X + HOOP.BOARD_T, HOOP.BOARD_Y0, HOOP.BOARD_Y0 + HOOP.BOARD_H, -HOOP.BOARD_W / 2, HOOP.BOARD_W / 2, BALL.BOARD_E, 'board');
+    if (s * p.x < HOOP.BOARD_X - 0.3 || p.y < HOOP.BOARD_Y0 - 0.3) return;
+    this.collideBox(HOOP.BOARD_X, HOOP.BOARD_X + HOOP.BOARD_T, HOOP.BOARD_Y0, HOOP.BOARD_Y0 + HOOP.BOARD_H, -HOOP.BOARD_W / 2, HOOP.BOARD_W / 2, BALL.BOARD_E, 'board', s);
     // the bracket that holds the rim to the board
-    this.collideBox(HOOP.X + RING + 0.005, HOOP.BOARD_X, HOOP.Y - 0.05, HOOP.Y + 0.005, -0.07, 0.07, 0.4, 'rim');
+    this.collideBox(HOOP.X + RING + 0.005, HOOP.BOARD_X, HOOP.Y - 0.05, HOOP.Y + 0.005, -0.07, 0.07, 0.4, 'rim', s);
     // the padded support arm behind the board
-    this.collideBox(HOOP.BOARD_X + HOOP.BOARD_T, HOOP.BOARD_X + 1.4, HOOP.BOARD_Y0 + 0.2, HOOP.BOARD_Y0 + 0.55, -0.12, 0.12, 0.3, 'board');
+    this.collideBox(HOOP.BOARD_X + HOOP.BOARD_T, HOOP.BOARD_X + 1.4, HOOP.BOARD_Y0 + 0.2, HOOP.BOARD_Y0 + 0.55, -0.12, 0.12, 0.3, 'board', s);
   }
 
   // the net slows a ball dropping through and steers it down the middle
-  collideNet(h) {
+  collideNet(h, hx = HOOP.X) {
     const p = this.pos, v = this.vel;
     if (p.y > HOOP.Y - 0.02 || p.y < HOOP.Y - HOOP.NET_LEN - 0.05) return;
-    const dx = p.x - HOOP.X, dz = p.z - HOOP.Z;
+    const dx = p.x - hx, dz = p.z - HOOP.Z;
     const r = Math.hypot(dx, dz);
     const nr = netRadiusAt(p.y);
     if (r > nr + BALL_R * 0.5) return; // outside the net

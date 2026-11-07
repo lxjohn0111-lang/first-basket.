@@ -12,10 +12,11 @@ import { storage } from './core/storage.js';
 import { Screens } from './ui/screens.js';
 import { TEAMS, teamById, teamConfig, defaultPlayer } from './game/teams.js';
 import { resolveKits } from './render/palette.js';
-import { GAME_LENGTHS } from './sim/constants.js';
+import { GAME_LENGTHS, FULL_LENGTHS } from './sim/constants.js';
 import { makePractice } from './game/practice.js';
+import { validCareer } from './game/career.js';
 
-const PROFILE_KEY = 'courtside.profile', RECORDS_KEY = 'courtside.records';
+const PROFILE_KEY = 'courtside.profile', RECORDS_KEY = 'courtside.records', CAREER_KEY = 'courtside.career';
 
 class App {
   constructor() {
@@ -47,6 +48,7 @@ class App {
     }, true);
     this.profile = this.loadJSON(PROFILE_KEY, defaultPlayer());
     this.records = this.loadJSON(RECORDS_KEY, { wins: 0, losses: 0, games: 0, bestShootout: 0, practiceDone: false, points: 0 });
+    this.career = this.loadCareer();
     this.screens = new Screens(this);
     this.session = null;
     this.menuSession = null;
@@ -90,11 +92,22 @@ class App {
   saveJSON(key, v) { try { storage.setItem(key, JSON.stringify(v)); return true; } catch (e) { return false; } }
   saveProfile() { if (!this.saveJSON(PROFILE_KEY, this.profile)) this.screens.toast('Your player could not be saved (storage unavailable).', true); }
   saveRecords() { this.saveJSON(RECORDS_KEY, this.records); }
+  loadCareer() {
+    try { const r = storage.getItem(CAREER_KEY); const c = r ? JSON.parse(r) : null; return validCareer(c) ? c : null; } catch (e) { return null; }
+  }
+  saveCareer() {
+    try {
+      if (this.career) storage.setItem(CAREER_KEY, JSON.stringify(this.career)); else storage.removeItem(CAREER_KEY);
+    } catch (e) { this.screens.toast('Your career could not be saved (storage unavailable).', true); }
+  }
 
   autostart(kind) {
     const q = this.params;
-    if (kind === 'quick' || kind === '1v1') this.startGame({ format: kind === '1v1' ? '1v1' : '3v3', home: q.get('home') || 'harbor', away: q.get('away') || 'mesa', venue: q.get('venue') || (kind === '1v1' ? 'gym' : 'arena'), live: q.has('live'), clock: q.get('clock') ? Number(q.get('clock')) : undefined, target: q.get('target') ? Number(q.get('target')) : undefined });
+    const num = (k) => (q.get(k) ? Number(q.get(k)) : undefined);
+    if (kind === 'quick' || kind === 'full') this.startGame({ format: 'full', size: num('size'), home: q.get('home') || 'harbor', away: q.get('away') || 'mesa', venue: q.get('venue') || 'arena', live: q.has('live'), quarter: num('quarter') });
+    else if (kind === 'half' || kind === '3v3' || kind === '1v1') this.startGame({ format: kind === '1v1' ? '1v1' : '3v3', home: q.get('home') || 'harbor', away: q.get('away') || 'mesa', venue: q.get('venue') || (kind === '1v1' ? 'gym' : 'arena'), live: q.has('live'), clock: num('clock'), target: num('target') });
     else if (kind.startsWith('practice')) this.startPractice(kind.split(':')[1] || 'drills', { live: q.has('live') });
+    else if (kind === 'career' && this.career) this.screens.careerHub();
   }
 
   // ------------------------------------------------------------------ loop
@@ -192,10 +205,11 @@ class App {
     const home = TEAMS[3], away = TEAMS[6];
     const kits = resolveKits(home, away);
     kits[0].word = home.short; kits[1].word = away.short;
+    // a full-court 5v5 game that never ends
     const cfg = {
       mode: 'menu', venue: 'arena', venueOpts: { homeName: home.name, awayName: away.name },
       colours: { kits, human: this.profile.look, court: home.colors[0] },
-      match: { seed: 99, clock: 100000, target: 999, difficulty: 'pro', teams: [teamConfig(home, 3), teamConfig(away, 3)] },
+      match: { court: 'full', seed: 99, quarter: 100000, difficulty: 'pro', teams: [teamConfig(home, 5), teamConfig(away, 5)] },
     };
     this.menuSession = new GameSession(this, cfg);
     this.menuSession.start();
@@ -205,19 +219,29 @@ class App {
   }
 
   // ------------------------------------------------------------ games
+  // format: 'full' (full court, 3-5 a side) | '3v3' | '1v1' (half court)
   gameConfig(o) {
-    const fmt = o.format || '3v3';
-    const size = fmt === '1v1' ? 1 : 3;
-    const home = teamById(o.home), away = teamById(o.away);
+    const fmt = o.format || 'full';
+    const home = o.homeTeam || teamById(o.home), away = o.awayTeam || teamById(o.away);
     const kits = resolveKits(home, away);
     kits[0].word = home.short; kits[1].word = away.short;
+    const seed = this.params.get('seed') ? Number(this.params.get('seed')) : (Date.now() & 0xffff) + 1;
+    const human = o.player || this.profile;
+    const difficulty = o.difficulty || this.settings.difficulty;
+    if (fmt === 'full') {
+      const size = Math.max(3, Math.min(5, Number(o.size || this.settings.teamSize) || 5));
+      const len = FULL_LENGTHS[o.length || this.settings.quarterLength] || FULL_LENGTHS.short;
+      return {
+        kits, home, away, size,
+        match: { court: 'full', seed, quarter: o.quarter || len.quarter, ot: len.ot, difficulty, teams: o.humanSide === 1 ? [teamConfig(home, size), teamConfig(away, size, human)] : [teamConfig(home, size, human), teamConfig(away, size)] },
+      };
+    }
+    const size = fmt === '1v1' ? 1 : 3;
     const len = GAME_LENGTHS[o.length || this.settings.gameLength] || GAME_LENGTHS.normal;
     const target = o.target || (fmt === '1v1' ? Math.min(11, len.target) : len.target);
-    const seed = this.params.get('seed') ? Number(this.params.get('seed')) : (Date.now() & 0xffff) + 1;
     return {
-      kits,
-      match: { seed, clock: o.clock || len.clock, target, difficulty: o.difficulty || this.settings.difficulty, teams: [teamConfig(home, size, this.profile), teamConfig(away, size)] },
-      home, away,
+      kits, home, away, size,
+      match: { seed, clock: o.clock || len.clock, target, difficulty, teams: [teamConfig(home, size, human), teamConfig(away, size)] },
     };
   }
 
@@ -252,16 +276,17 @@ class App {
   }
 
   startGame(o) {
-    this.lastGame = o;
+    if (!o.career) this.lastGame = o;
     const c = this.gameConfig(o);
-    const fmt = o.format || '3v3';
+    const fmt = o.format || 'full';
+    const what = fmt === 'full' ? `${c.size}v${c.size} Full Court` : fmt === '1v1' ? '1v1 Challenge' : '3v3 Half Court';
     return this.startSession({
-      mode: fmt === '1v1' ? '1v1' : 'quick', live: o.live,
+      mode: o.career ? 'career' : fmt === 'full' ? 'quick' : fmt, live: o.live, career: o.career,
       venue: o.venue || (fmt === '1v1' ? 'gym' : 'arena'),
       venueOpts: { homeName: c.home.name, awayName: c.away.name },
-      title: `${fmt === '1v1' ? '1v1 Challenge' : '3v3 Quick Match'} · ${c.home.name} v ${c.away.name}`,
-      colours: { kits: c.kits, human: this.profile.look, court: c.home.colors[0] }, match: c.match, firstTeam: o.firstTeam,
-      onEnd: (s) => this.screens.result(s),
+      title: o.title || `${what} · ${c.home.name} v ${c.away.name}`,
+      colours: { kits: c.kits, human: (o.player || this.profile).look, court: c.home.colors[0] }, match: c.match, firstTeam: o.firstTeam,
+      onEnd: (s) => (o.career ? this.screens.careerResult(s) : this.screens.result(s)),
     });
   }
 

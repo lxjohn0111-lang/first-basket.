@@ -208,8 +208,8 @@ export function separatePlayers(players, now, ballOwner) {
   }
 }
 
-// keep everyone on (or just off) the floor of the half court
-export function clampToFloor(p) {
-  p.pos.x = clamp(p.pos.x, -1.5, 14.6);
+// keep everyone on (or just off) the floor: the +X half, or the whole court
+export function clampToFloor(p, full = false) {
+  p.pos.x = clamp(p.pos.x, full ? -14.6 : -1.5, 14.6);
   p.pos.z = clamp(p.pos.z, -8.3, 8.3);
 }

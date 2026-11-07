@@ -6,10 +6,11 @@
 import { CONTROLS, TOUCH_CONTROLS } from '../core/input.js';
 import { FOV_MIN, FOV_MAX } from '../core/settings.js';
 import { TEAMS, teamById, ARCHETYPES, LOOK_OPTIONS } from '../game/teams.js';
-import { ATTRS, ATTR_LABELS, GAME_LENGTHS } from '../sim/constants.js';
+import { ATTRS, ATTR_LABELS, ATTR_SHORT, GAME_LENGTHS, FULL_LENGTHS } from '../sim/constants.js';
 import { DIFFICULTY } from '../sim/match.js';
 import { VENUES } from '../render/venues.js';
 import { icon } from './icons.js';
+import { CareerScreens } from './career.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -36,6 +37,7 @@ export class Screens {
     this.current = null;
     this.lastShown = null;
     this.setup = { format: '3v3', home: 'harbor', away: 'mesa', venue: 'arena' };
+    this.career = new CareerScreens(this);
     let hovered = null, lastHover = 0;
     this.root.addEventListener('pointerover', (e) => {
       if (e.pointerType !== 'mouse') return;
@@ -104,7 +106,10 @@ export class Screens {
     app.hud.show(false);
     const r = app.records, pr = app.profile;
     const arch = ARCHETYPES[pr.archetype] || ARCHETYPES.slasher;
-    const rec = r.games ? `${r.wins}-${r.losses} record` : 'Tip off a 3v3 game';
+    const rec = r.games ? `${r.wins}-${r.losses} record` : 'Two baskets, four quarters';
+    const size = app.settings.teamSize || 5;
+    const car = app.career;
+    const carSub = car ? `${esc(car.player.name)} · ${esc(this.career.clubName())}` : 'Create your player';
     this.show(`
       <div class="menu-inner">
         <div class="menu-head">
@@ -112,14 +117,14 @@ export class Screens {
           <div class="tagline">First-person basketball. Your eyes. Your handles. Your shot.</div>
         </div>
         <div class="menu-actions col">
-          <div class="menu-play"><button class="btn xl primary" data-act="play">${icon('play', 36)}<span class="stack">Play 3v3<small>Quick match · ${esc(rec)}</small></span></button></div>
+          <div class="menu-play"><button class="btn xl primary" data-act="play">${icon('play', 36)}<span class="stack">Play ${size}v${size}<small>Full court · ${esc(rec)}</small></span></button></div>
           <div class="menu-row">
-            <button class="btn lg" data-act="one">${icon('user')} 1v1 Challenge</button>
-            <button class="btn lg" data-act="practice">${icon('cone')} Practice</button>
+            <button class="btn lg" data-act="career">${icon('trophy')}<span class="stack">Career<small>${carSub}</small></span></button>
+            <button class="btn lg" data-act="half">${icon('user')}<span class="stack">Half Court<small>3x3 · 1v1</small></span></button>
           </div>
           <div class="menu-row">
+            <button class="btn" data-act="practice">${icon('cone', 20)} Practice</button>
             <button class="btn" data-act="player">${icon('star', 20)} My Player<small style="margin:0 0 0 6px">#${esc(pr.number)} ${esc(arch.name)}</small></button>
-            <button class="btn" data-act="shootout">${icon('ball', 20)} Shootout${r.bestShootout ? `<small style="margin:0 0 0 6px">best ${r.bestShootout}</small>` : ''}</button>
           </div>
           <div class="menu-icons">
             <button class="btn sm" data-act="settings">${icon('gear', 18)} Settings</button>
@@ -128,11 +133,11 @@ export class Screens {
           </div>
         </div>
       </div>`, {
-      play: () => this.gameSetup('3v3'),
-      one: () => this.gameSetup('1v1'),
+      play: () => this.gameSetup('full'),
+      half: () => this.gameSetup(this.setup.half || '3v3'),
+      career: () => (app.career ? this.career.hub() : this.career.create()),
       practice: () => this.practiceMenu(),
       player: () => this.myPlayer(),
-      shootout: () => app.startPractice('shootout'),
       settings: () => this.settings(),
       help: () => this.howTo(),
       style: () => this.styleMenu(),
@@ -140,10 +145,13 @@ export class Screens {
   }
 
   // ------------------------------------------------------------ game setup
+  // format: 'full' (full court) | '3v3' | '1v1' (half court)
   gameSetup(format) {
     this.current = 'setup';
     const app = this.app, s = this.setup;
+    const full = format === 'full';
     s.format = format;
+    if (!full) s.half = format;
     if (s.home === s.away) s.away = TEAMS[(TEAMS.findIndex((t) => t.id === s.home) + 1) % TEAMS.length].id;
     const pick = (side) => {
       const t = teamById(s[side]);
@@ -162,23 +170,36 @@ export class Screens {
       this.gameSetup(format);
     };
     const len = GAME_LENGTHS[app.settings.gameLength] || GAME_LENGTHS.normal;
-    const el = this.show(`<div class="panel wide"><div class="h-title">${format === '1v1' ? '1v1 Challenge' : '3v3 Quick Match'}</div>
-      <p class="lead">${format === '1v1' ? 'You against their best player. Half court, make your own shots.' : 'Half court, FIBA 3x3 style: check ball, clear it after a steal or rebound, 14-second shot clock.'}</p>
+    const size = app.settings.teamSize || 5;
+    const title = full ? 'Full Court' : 'Half Court';
+    const lead = full
+      ? 'Two baskets, four quarters. 24-second shot clock, 8 seconds to get it over half court, throw-ins after baskets. Teams switch ends at half time.'
+      : format === '1v1' ? 'You against their best player. Half court, make your own shots.' : 'Half court, FIBA 3x3 style: check ball, clear it after a steal or rebound, 14-second shot clock.';
+    const opts = full
+      ? `<div class="set"><span class="lab">Players</span>${this.seg('teamSize', [[5, '5v5'], [4, '4v4'], [3, '3v3']], size)}</div>
+         <div class="set"><span class="lab">Quarters</span>${this.seg('quarterLength', Object.entries(FULL_LENGTHS).map(([k, g]) => [k, g.label]), app.settings.quarterLength)}</div>`
+      : `<div class="set"><span class="lab">Format</span>${this.seg('format', [['3v3', '3v3'], ['1v1', '1v1']], format)}</div>
+         <div class="set"><span class="lab">Game</span>${this.seg('gameLength', Object.entries(GAME_LENGTHS).map(([k, g]) => [k, g.label]), app.settings.gameLength)}</div>`;
+    const foot = full ? 'Higher score after four quarters wins; a tie goes to overtime. Inside the arc 2, outside 3.' : `${format === '1v1' ? `1v1 is played to ${Math.min(11, len.target)}.` : `First to ${len.target} or the higher score at the buzzer.`} Inside the arc 2, outside 3.`;
+    const el = this.show(`<div class="panel wide"><div class="h-title">${title}</div>
+      <p class="lead">${lead}</p>
       <div class="vs">${pick('home')}<div class="vs-mid">VS</div>${pick('away')}</div>
       <div class="set"><span class="lab">Venue</span>${this.seg('venue', [['arena', VENUES.arena.name], ['gym', VENUES.gym.name]], s.venue)}</div>
       <div class="set"><span class="lab">Difficulty</span>${this.seg('difficulty', Object.entries(DIFFICULTY).map(([k, d]) => [k, d.label]), app.settings.difficulty)}</div>
-      <div class="set"><span class="lab">Game</span>${this.seg('gameLength', Object.entries(GAME_LENGTHS).map(([k, g]) => [k, g.label.replace(' · ', ' · ')]), app.settings.gameLength)}</div>
-      <div class="small muted" style="margin-top:6px">${format === '1v1' ? `1v1 is played to ${Math.min(11, len.target)}.` : `First to ${len.target} or the higher score at the buzzer.`} Inside the arc 2, outside 3.</div>
+      ${opts}
+      <div class="small muted" style="margin-top:6px">${foot}</div>
       <div class="actions"><button class="btn primary lg" data-act="go">${icon('play')} Tip off</button><button class="btn ghost" data-act="back">Back</button></div></div>`, {
       homePrev: () => cycle('home', -1), homeNext: () => cycle('home', 1),
       awayPrev: () => cycle('away', -1), awayNext: () => cycle('away', 1),
-      go: () => app.startGame({ format, home: s.home, away: s.away, venue: s.venue }),
+      go: () => app.startGame({ format: s.format, home: s.home, away: s.away, venue: s.venue }),
       back: () => this.mainMenu(),
     });
     this.bindChoices(el, (key, v) => {
       if (key === 'venue') { s.venue = v; return; }
-      app.settings[key] = v;
+      if (key === 'format') { this.gameSetup(v); return; }
+      app.settings[key] = key === 'teamSize' ? Number(v) : v;
       app.applySettings(); app.commitSettings();
+      if (key === 'teamSize') this.gameSetup(format);
     });
   }
 
@@ -275,6 +296,10 @@ export class Screens {
     this.sfx('uiReward', 0.4);
   }
 
+  // ------------------------------------------------------------ career
+  careerHub(tab) { this.career.hub(tab); }
+  careerResult(session) { this.career.result(session); }
+
   // ------------------------------------------------------------ results
   result(session) {
     const app = this.app;
@@ -306,7 +331,7 @@ export class Screens {
         <div class="r-cols">
           <div class="r-match">
             <div class="scoreline"><div class="side">${crestSVG(tA, 56)}${esc(m.teams[0].name)}</div><div class="sc">${rep.score[0]} - ${rep.score[1]}</div><div class="side">${crestSVG(tB, 56)}${esc(m.teams[1].name)}</div></div>
-            <div class="scorers">Player of the game: ${rep.mvp ? esc(rep.mvp.name) : '-'}${m.overtime ? ' · overtime' : ''}</div>
+            <div class="scorers">Player of the game: ${rep.mvp ? esc(rep.mvp.name) : '-'}${m.inOvertime ? ' · overtime' : ''}</div>
           </div>
           <div class="r-you">
             <div class="rating-hero"><span class="lab">Your grade</span><span class="num ${/^A/.test(rep.grade) ? 'hi' : /^[DF]/.test(rep.grade) ? 'lo' : ''}" id="r-num">${rep.grade}</span></div>
@@ -322,12 +347,12 @@ export class Screens {
         <div class="more" hidden>
           <div class="mini-stats">${mini(pct(st.fgPct), 'FG%')}${mini(`${st.tpm}/${st.tpa}`, '3PT')}${mini(`${st.ftm}/${st.fta}`, 'FT')}${mini(st.reb, 'Rebounds')}${mini(st.ast, 'Assists')}${mini(st.stl, 'Steals')}${mini(st.blk, 'Blocks')}${mini(st.tov, 'Turnovers')}</div>
           <table class="box"><thead><tr><th></th><th>Player</th><th>PTS</th><th>FG</th><th>3PT</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TO</th></tr></thead><tbody>${m.players.map(row).join('')}</tbody></table>
-          <div class="small muted" style="margin-top:6px;text-align:center">Possession ${rep.possession[0]}% - ${rep.possession[1]}% · Team fouls ${m.teams[0].fouls} - ${m.teams[1].fouls}</div>
+          <div class="small muted" style="margin-top:6px;text-align:center">Possession ${rep.possession[0]}% - ${rep.possession[1]}% · Fouls ${rep.teams[0].pf} - ${rep.teams[1].pf}</div>
         </div>
       </div>`, {
       more: (b) => { const box = el.querySelector('.more'); box.hidden = !box.hidden; b.innerHTML = `${icon('chart', 16)} ${box.hidden ? 'Box score' : 'Hide'}`; if (!box.hidden) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); },
       again: () => { app.endSession(); app.startGame(app.lastGame || {}); },
-      change: () => { const f = (app.lastGame || {}).format || '3v3'; app.endSession(); this.gameSetup(f); },
+      change: () => { const f = (app.lastGame || {}).format || 'full'; app.endSession(); this.gameSetup(f); },
       menu: () => { app.endSession(); this.mainMenu(); },
     });
     this.sfx(outcome === 'win' ? 'uiReward' : 'uiConfirm', 0.4);
@@ -362,7 +387,9 @@ export class Screens {
       <div class="tabs">${[['game', 'Game'], ['controls', 'Controls'], ['video', 'Video'], ['audio', 'Audio']].map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>
       ${sec('game', `${row('Difficulty', this.seg('difficulty', Object.entries(DIFFICULTY).map(([k, d]) => [k, d.label]), s.difficulty))}
         <div class="small muted" style="margin:-4px 0 6px">Rookie: a wider green on the meter, slower opponents. All-Star: they read your passes and close out hard.</div>
-        ${row('Game length', this.seg('gameLength', Object.entries(GAME_LENGTHS).map(([k, g]) => [k, g.label]), s.gameLength))}
+        ${row('Quarters', this.seg('quarterLength', Object.entries(FULL_LENGTHS).map(([k, g]) => [k, g.label]), s.quarterLength))}
+        ${row('Players', this.seg('teamSize', [[5, '5v5'], [4, '4v4'], [3, '3v3']], s.teamSize))}
+        ${row('Half court game', this.seg('gameLength', Object.entries(GAME_LENGTHS).map(([k, g]) => [k, g.label]), s.gameLength))}
         ${row('Shot meter', onOff('meter'))}`)}
       ${sec('controls', `${row('Look speed', this.slider('s-sens', 0.2, 3, 0.05, s.sensitivity, s.sensitivity.toFixed(2)))}
         ${row('Invert Y', this.seg('invertY', [[false, 'Off'], [true, 'On']], s.invertY))}
@@ -398,9 +425,9 @@ export class Screens {
     bindRange('s-master', 'master', pct); bindRange('s-sfx', 'sfx', pct); bindRange('s-crowd', 'crowd', pct);
     this.bindChoices(el, (key, v) => {
       if (key === 'style') { app.setStyle(v); return; }
-      s[key] = v;
+      s[key] = key === 'teamSize' ? Number(v) : v;
       app.applySettings();
-      if ((key === 'difficulty' || key === 'gameLength') && app.session) this.toast('Applies from the next game.');
+      if (['difficulty', 'gameLength', 'quarterLength', 'teamSize'].includes(key) && app.session) this.toast('Applies from the next game.');
     });
   }
 
@@ -421,12 +448,18 @@ export class Screens {
         ${tip('Attack the rim', 'Sprint at the basket and shoot near it: a layup, or a dunk if you have the bounce.')}
         ${tip('Defence', 'Stay between your man (red ring) and the rim in a stance (C). Steal (E) when the dribble is low and on your side; reaching across the body is a foul.')}
       </div>
-      <div class="h-sec">Rules</div>
+      <div class="h-sec">Full court</div>
       <div class="tips">
-        ${tip('Half court 3v3', 'Check ball at the top after a basket or a whistle. 14-second shot clock, reset when a shot hits the rim.')}
+        ${tip('Two baskets', 'Each team attacks one basket and defends the other; teams switch ends at half time. The radar always shows the basket you attack at the top.')}
+        ${tip('Clocks', 'Four quarters. 24-second shot clock (14 after an offensive rebound off the rim). 8 seconds to bring the ball over half court; once over, going back is a backcourt violation.')}
+        ${tip('Throw-ins', 'After a basket the other team inbounds from the baseline, after a whistle from the sideline; 5 seconds to get it in. Call for it (RMB) to get the ball.')}
+        ${tip('Fouls', 'Shooting fouls give free throws (and one if it goes in). From a team\'s 5th foul of a quarter every foul is two shots (a red bar on the scoreboard).')}
+      </div>
+      <div class="h-sec">Half court</div>
+      <div class="tips">
+        ${tip('3x3 rules', 'Check ball at the top after a basket or a whistle. 14-second shot clock, reset when a shot hits the rim.')}
         ${tip('Clear it', 'After a steal or a defensive rebound, take the ball beyond the arc before you score.')}
         ${tip('Scoring', 'Two inside the arc, three outside, one per free throw. First to the target score, or ahead at the buzzer; a tie goes to sudden death.')}
-        ${tip('Fouls', 'Shooting fouls give free throws (and one if it goes in). From the 6th team foul every foul is two shots.')}
       </div>
       <div class="small muted" style="margin-top:var(--s4)">Rendering: three.js (MIT). All teams and players are fictional; all art and sound are generated by the game.</div>
       <div class="actions"><button class="btn primary" data-act="back">Got it</button></div></div>`, {
@@ -445,6 +478,7 @@ export class Screens {
     const app = this.app;
     const sess = app.session;
     const practice = sess && sess.cfg.practice;
+    const career = sess && sess.cfg.career;
     this.show(`<div class="panel narrow center-t"><div class="h-title">Paused</div>
       <div class="col">
         <button class="btn primary lg block" data-act="resume">${icon('play')} Resume</button>
@@ -454,16 +488,16 @@ export class Screens {
           <button class="btn sm" data-act="style">${icon('brush', 18)} Visual Style</button>
           ${!practice ? `<button class="btn sm" data-act="stats">${icon('chart', 18)} Box Score</button>` : `<button class="btn sm" data-act="finish">${icon('check', 18)} Finish</button>`}
         </div>
-        <button class="btn ghost block" data-act="exit">${practice ? 'Exit to Practice' : 'Exit to Main Menu'}</button>
+        <button class="btn ghost block" data-act="exit">${practice ? 'Exit to Practice' : career ? 'Exit to Career' : 'Exit to Main Menu'}</button>
       </div>
-      ${!practice ? '<div class="small muted" style="margin-top:var(--s3)">Leaving ends this game.</div>' : ''}</div>`, {
+      ${!practice ? `<div class="small muted" style="margin-top:var(--s3)">${career ? 'Leaving abandons this game: it will not count, and you can play it again.' : 'Leaving ends this game.'}</div>` : ''}</div>`, {
       resume: () => app.resume(),
       controls: () => this.howTo(true),
       settings: () => this.settings(true),
       style: () => this.styleMenu(true),
       stats: () => this.liveStats(),
       finish: () => { if (practice) { practice.finish(); app.unpause(); } },
-      exit: () => { app.endSession(); if (practice) this.practiceMenu(); else this.mainMenu(); },
+      exit: () => { app.endSession(); if (practice) this.practiceMenu(); else if (career) this.careerHub(); else this.mainMenu(); },
     });
   }
 
@@ -478,7 +512,7 @@ export class Screens {
       <div class="scoreline" style="margin-top:0"><div class="side">${esc(m.teams[0].short)}</div><div class="sc">${r.score[0]} - ${r.score[1]}</div><div class="side">${esc(m.teams[1].short)}</div></div>
       <div class="rating-hero"><span class="lab">Your grade so far</span><span class="num">${r.grade}</span></div>
       <div class="mini-stats">${mini(st.pts, 'Points')}${mini(`${st.fgm}/${st.fga}`, 'FG')}${mini(`${st.tpm}/${st.tpa}`, '3PT')}${mini(st.ast, 'Assists')}${mini(st.reb, 'Rebounds')}${mini(st.stl, 'Steals')}${mini(st.blk, 'Blocks')}${mini(st.tov, 'Turnovers')}</div>
-      <div class="small muted" style="margin-top:var(--s3)">${m.displayClock} left · team fouls ${m.teams[0].fouls} - ${m.teams[1].fouls}</div>
+      <div class="small muted" style="margin-top:var(--s3)">${m.full ? `${m.periodLabel} · ` : ''}${m.displayClock} left · team fouls ${m.teams[0].fouls} - ${m.teams[1].fouls}</div>
       <div class="actions mid"><button class="btn primary" data-act="back">Back</button></div></div>`, { back: () => this.pauseMenu() });
   }
 

@@ -22,6 +22,10 @@ const P = {
   check: '<path d="M4.5 12.5l5 5 10-11"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   brush: '<path d="M14.5 4.5 19.5 9.5 11 18l-5-5zM6 13l-2 7 7-2"/>',
+  mail: '<path d="M3.5 6.5h17v11h-17z"/><path d="m3.5 7 8.5 6.5L20.5 7"/>',
+  up: '<path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/>',
+  list: '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>',
+  forward: '<path d="M5 5.5v13l7-6.5zM12 5.5v13l7-6.5z" fill="currentColor" stroke="none"/>',
 };
 
 export function icon(name, size = 22) {

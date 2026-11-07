@@ -2,7 +2,9 @@
 
 A first-person 3D basketball game for the browser. You play one player and see every possession through their eyes: your hands on the ball, the dribble at your side, the rim over the ball at your set point, the defender sliding in front of you.
 
-- **Half-court 3v3 and 1v1** in the FIBA 3x3 style: check ball at the top, "clear it" after a steal or defensive rebound, 14-second shot clock, twos and threes, free throws, sudden-death overtime.
+- **Full-court games (the default)**: two baskets, 5v5 (or 4v4 / 3v3), four quarters, a jump ball to start, throw-ins, 24-second shot clock, 8 seconds to cross half court, backcourt violations, team fouls and the bonus, teams switching ends at half time, overtime.
+- **Career**: create your own player, start in the City League and play your club's games. Every game gets a match rating; it earns skill points to train with, builds your reputation, and gets the scouts of bigger clubs interested. Their offers take you up through the National League to the Premier League.
+- **Half Court** (a separate mode): 3v3 and 1v1 in the FIBA 3x3 style: check ball at the top, "clear it" after a steal or defensive rebound, 14-second shot clock, sudden-death overtime.
 - **Practice**: Coach Mo's Practice Court (nine guided drills with stars), a 60-second Shootout with a moving hot spot, and a Free Shootaround.
 - Two venues (City Arena, Neighborhood Gym) plus a Practice Gym; two live-switchable visual styles (Classic ink drawing / Neobrutalist).
 - Everything is built at load time from primitives; every sound is synthesised. No external art or audio files.
@@ -27,14 +29,27 @@ node server.js     # http://localhost:8080
 | Mouse | Look and aim | Look |
 | Shift | Sprint (a faster, lower dribble) | Sprint |
 | Left mouse | **Shoot**: hold to fill the meter, release in the green | Hands up (contest) |
-| Right mouse | **Pass** to the ringed teammate | Call for the ball / defensive stance (hold) |
-| Space | Pump fake | **Jump**: block or rebound |
+| Right mouse | **Pass** to the ringed teammate | Call for the ball (or the throw-in) / defensive stance (hold) |
+| Space | Pump fake | **Jump**: block, rebound, or the opening tip |
 | E | — | **Steal** |
 | Q | **Crossover** (switch hands with a burst) | — |
 | C | — | Defensive stance (hold): quicker side to side |
 | P / Tab / Enter | Pause / free or capture the cursor / skip a drill | |
 
 Touch screens get a floating move stick, drag-to-look, and contextual buttons (SHOOT · PASS · CROSS · FAKE with the ball; STEAL · STANCE · BLOCK · HANDS on defence; CALL · JUMP off the ball).
+
+## Game modes
+
+**Quick match (full court).** The main menu's big button. Pick two teams, the venue, the difficulty, 5v5 / 4v4 / 3v3 and the quarter length (4 × 2, 3 or 5 minutes of game clock; the clock stops on dead balls). You play the player at your position in your team's line-up (point guard, shooting guard, small forward, power forward or centre, from your play style in My Player).
+
+**Career.** *New career*: name, number, look, position, your first club (one of six City League clubs), difficulty and quarter length. You start at about overall 55. Three leagues of six fictional clubs (City League, National League, Premier League) play a ten-round season (everyone home and away). Each round you play your club's game (full court, 5v5; you can also simulate it, which counts for less), and every other game in every league is simulated from the clubs' strength, so all three tables are live.
+- *Match rating* (1-10, 6 is a solid game): from your box score per minute (points, efficiency, rebounds, assists, steals, blocks, turnovers, fouls) and the result. Calibrated on full-court AI games (an average player rates about 6).
+- *Skill points* from every game (more for a good one) are spent in Training on your six attributes; higher ratings cost more points.
+- *Reputation* (0-100) moves with your ratings (more in a higher league). *Scouts*: clubs in your league with a stronger team, and clubs one league up once your reputation is high enough, raise their interest after good games. When it is high enough a club makes an **offer** (one to three seasons, a salary): sign and you join them at once, in their league, carrying on with their next game; offers run out after three rounds. Clubs that are still keen make offers in the summer.
+- *Season end*: your position, awards (champions, All-League team, MVP), every league's champion; you are a year older, contracts run down and are extended, and the next season starts.
+- The career is saved in the browser after every step (`courtside.career`). Leaving a career game from the pause menu abandons it (it doesn't count).
+
+**Half court.** The FIBA 3x3-style 3v3, or 1v1 against the other team's best player.
 
 ## How the game plays
 
@@ -46,11 +61,13 @@ Touch screens get a floating move stick, drag-to-look, and contextual buttons (S
 
 **Defence.** Hold the stance (C) to slide side to side. **Steal (E)** succeeds on timing and position: the ball is exposed when the dribble is low and on your side; reaching across the dribbler's body is rarely clean and often a foul. A missed swipe leaves you off balance for a moment. **Blocks** need your hands in the ball's path on the way up — a late jump rarely blocks; hitting the ball on its way down over the rim is goaltending. Your man has a red ring.
 
-**Rules.** Check ball at the top after every basket or whistle (the clock waits). After a steal or a defensive rebound the new offence must take the ball beyond the arc before a basket counts. 14-second shot clock, reset when a shot hits the rim. Shooting fouls give two or three free throws (and one if it goes in); from the 6th team foul every foul is two shots. Out of bounds on the sidelines, baseline and half-court line. First to the target score (11 or 21) or the higher score at the buzzer; a tie at the buzzer goes to "next basket wins".
+**Full-court rules (FIBA style).** A jump ball at centre court starts the game (the team that doesn't win it gets the alternating-possession arrow, and inbounds at the centre line to start the other quarters and overtime). After a basket the other team inbounds from behind the baseline; after a turnover, violation or foul, from the nearest sideline (or baseline); 5 seconds to get it in, and the clocks only start when the ball is touched on the court. 24-second shot clock (14 after an offensive rebound off the rim). 8 seconds to get the ball over half court, and once over, going back is a backcourt violation (unless the defence knocked it there, or after a shot). Team fouls count per quarter: from a team's 5th, every foul is two free throws. Teams switch ends at half time. A tie after four quarters goes to overtime periods.
 
-**AI.** Man-to-man defence with a reaction lag set by the difficulty, sagging help and rotations on drives, closeouts, contests and block attempts timed with the shooter, pokes at exposed dribbles, and bites on fakes and crossovers. On offence the ball handler weighs the expected points of a shot, a drive and every pass (lanes and defenders included); off-ball players space to real spots, cut when their defender loses them and call for the ball. Rebounds use the ball's predicted flight: defenders box out, the nearest players go for it. Difficulty (Rookie / Pro / All-Star) only changes the opposing team; your teammates always play at full sharpness.
+**Half-court rules (3x3).** Check ball at the top after every basket or whistle (the clock waits). After a steal or a defensive rebound the new offence must take the ball beyond the arc before a basket counts. 14-second shot clock, reset when a shot hits the rim. Shooting fouls give two or three free throws (and one if it goes in); from the 6th team foul every foul is two shots. Out of bounds on the sidelines, baseline and half-court line. First to the target score (11 or 21) or the higher score at the buzzer; a tie at the buzzer goes to "next basket wins".
 
-**Players.** Choose a play style in My Player — Floor General, Sharpshooter, Slasher or Rim Protector — with six attributes (shooting, ball handling, speed, defence, passing, vertical) that set the sweet-spot width, dribble speed, movement, steal and block chances, pass accuracy and jump height. All teams and players are fictional.
+**AI.** Man-to-man defence with a reaction lag set by the difficulty, sagging help and rotations on drives, closeouts, contests and block attempts timed with the shooter, pokes at exposed dribbles, and bites on fakes and crossovers. On offence the ball handler weighs the expected points of a shot, a drive and every pass (lanes and defenders included); off-ball players space to real spots, cut when their defender loses them and call for the ball. Rebounds use the ball's predicted flight: defenders box out, the nearest players go for it. On the full court the same logic runs in the attack frame of the team with the ball (its basket mirrored onto one end): the ball is brought up (pushed when the defence isn't back, or an outlet pass to the best ball handler after a rebound), off-ball players run the floor to their spots and leak out on breaks, defenders sprint back and pick up around half court, matchups are by position, and throw-ins go to a receiver who comes to meet the ball. Difficulty (Rookie / Pro / All-Star) only changes the opposing team; your teammates always play at full sharpness.
+
+**Players.** Choose a play style in My Player — Floor General (PG), Sharpshooter (SG), Slasher (SF), Two-Way Forward (PF) or Rim Protector (C) — with six attributes (shooting, ball handling, speed, defence, passing, vertical) that set the sweet-spot width, dribble speed, movement, steal and block chances, pass accuracy and jump height. All teams and players are fictional.
 
 ## Relationship to First Touch (reference project)
 
@@ -73,18 +90,25 @@ Geometry alone doesn't put a dribble in view: from the eyes of a 2 m player the 
 ## Tests
 
 ```sh
-npm test                          # headless: physics/rules checks, AI games, scripted-human games
+npm test                          # headless: everything below in one run
 node tests/physics.mjs            # bounce, rim, basket detection, dribble sync, shot solver, clear rule, shot clock, FTs
-node tests/sim.mjs 6 3v3 pro      # AI vs AI: flow, stats, stall detection
-node tests/human.mjs 4 3v3 pro    # full games with a scripted player on the real controls
+node tests/full.mjs 3 5 pro 120   # full-court AI games: tip-off, four quarters, both baskets, ends switched at
+                                  # half time, throw-in times, points = box score, stall detection
+node tests/human.mjs 2 full pro   # full-court games with a scripted player on the real controls (both ends)
+node tests/career.mjs             # schedules, rating calibration on real games, training, scouts/offers,
+                                  # mid-season and summer transfers, season end, save/load
+node tests/sim.mjs 6 3v3 pro      # half-court AI vs AI
+node tests/human.mjs 4 3v3 pro    # half-court games with the scripted player
 node tests/shooting.mjs 75        # make rates by distance and release timing
 ```
 
-Browser checks (Playwright with Chromium, `node server.js` running; screenshots in `tests/out/`): `tests/flow.mjs` (every menu, a full game to the result and box score, pause/settings/style/how-to, My Player persistence, 1v1, the Practice Court drills and the Shootout, failing on any page error), `tests/shots.mjs` (menu and first-person views in both styles), `tests/mobile.mjs` (phone emulation: touch controls and compact HUD).
+Browser checks (Playwright with Chromium, `node server.js` running; screenshots in `tests/out/`): `tests/flow.mjs` (every menu; a full-court game from the tip-off to the result and box score; pause/settings/style/how-to; My Player persistence; half-court 1v1; a career from player creation through the hub tabs, training, a played game to its report, a simulated game and retiring; the Practice Court drills and the Shootout; failing on any page error), `tests/shots.mjs` (menu and first-person views in both styles), `tests/mobile.mjs` (phone emulation: touch controls and compact HUD).
 
 ## Known simplifications
 
-- Half court only (FIBA 3x3 format); no full-court transition game, substitutions or timeouts.
+- No substitutions or timeouts: the same players play the whole game (stamina recovers when jogging), and nobody fouls out. Jump balls happen only at the start (no held balls); the arrow decides the other periods.
+- Full-court games use a real-time quarter clock that stops on dead balls; quarters are short (2-5 minutes), so scores are lower than in a 40-minute game.
+- Career: the other clubs' rosters don't change between seasons and there is no promotion or relegation of clubs; simulated games use the clubs' strength, not a play-by-play.
 - Moving with the ball always dribbles, so there is no travelling or double-dribble call; a pump fake doesn't end your dribble.
 - Fouls: reach-ins, shooting fouls (including and-ones) and the bonus are modelled; charges/blocking fouls and loose-ball fouls are not.
 - Spectators react through sound and animation only. Audio is synthesised and intentionally simple.

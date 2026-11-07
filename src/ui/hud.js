@@ -1,7 +1,8 @@
 // In-game HUD (First Touch's HUD, adapted): score bug with a possession arrow, game
 // clock and shot clock at the top, your card (points, shooting, energy) top left,
 // a small crosshair with the shot meter beside it, contextual hints, short
-// notifications, an off-screen ball arrow and a half-court radar.
+// notifications, an off-screen ball arrow and a radar (the half court, or the whole
+// floor with the basket you attack at the top).
 //
 // The shot meter fills while the shoot input is held. Its green sweet spot sits
 // higher the further the shot (more power needed) and narrows under pressure or on
@@ -29,6 +30,7 @@ export class Hud {
     this.score = el('span', 'hud-score', top, '0 - 0');
     this.teamB = el('span', 'hud-team', top);
     const clocks = el('div', 'hud-clocks', this.root);
+    this.period = el('div', 'hud-period hidden', clocks, 'Q1');
     this.clock = el('div', 'hud-clock', clocks, '5:00');
     this.shot = el('div', 'hud-shot', clocks, '14');
     this.phase = el('div', 'hud-phase', this.root);
@@ -97,9 +99,16 @@ export class Hud {
     this.teamB.textContent = m.teams[1].short;
     this.teamA.style.setProperty('--kit', s.kitA || '#c00');
     this.teamB.style.setProperty('--kit', s.kitB || '#00c');
-    const live = m.phase === 'live' || m.phase === 'check';
+    const live = m.phase === 'live' || m.phase === 'check' || m.phase === 'inbound';
     this.teamA.classList.toggle('poss', live && m.offense === 0 && m.rules);
     this.teamB.classList.toggle('poss', live && m.offense === 1 && m.rules);
+    // full court: the quarter, and who is in the bonus (team fouls)
+    const fullCourt = !!m.full && s.clockText == null;
+    this.period.classList.toggle('hidden', !fullCourt);
+    if (fullCourt) this.period.textContent = m.periodLabel;
+    const bonus = m.full ? 5 : 6;
+    this.teamA.classList.toggle('bonus', !!m.rules && m.teams[1].fouls >= bonus - 1 && m.phase !== 'over');
+    this.teamB.classList.toggle('bonus', !!m.rules && m.teams[0].fouls >= bonus - 1 && m.phase !== 'over');
     const sc = `${m.teams[0].score} - ${m.teams[1].score}`;
     if (sc !== this.score.textContent) {
       if (this.score.textContent !== '0 - 0' || sc !== '0 - 0') { this.score.classList.remove('bump'); void this.score.offsetWidth; this.score.classList.add('bump'); }
@@ -165,43 +174,68 @@ export class Hud {
     this.arrow.style.transform = `translate(-50%,-50%) rotate(${-ang}rad)`;
   }
 
-  // the half court, hoop at the top
+  // the half court (hoop at the top), or the full court with the basket the human
+  // attacks at the top
   drawRadar(s) {
-    const m = s.match, c = this.rctx, W = this.radar.width, H = this.radar.height;
+    const m = s.match, c = this.rctx;
     const h = m.human;
-    const pad = 10;
-    const sx = (W - pad * 2) / COURT.W, sy = (H - pad * 2) / COURT.HL;
-    const map = (x, z) => [pad + (COURT.HW + z) * sx, pad + (COURT.HL - x) * sy];
+    const full = !!m.full;
+    if (full !== this.radarFull) {
+      this.radarFull = full;
+      this.radar.width = full ? 124 : 200; this.radar.height = full ? 216 : 176;
+      this.radar.classList.toggle('full', full);
+    }
+    const W = this.radar.width, H = this.radar.height;
+    const pad = full ? 7 : 10;
+    // world -> radar: in the attack frame of the human's team (sign sg)
+    const sg = full ? (h ? m.side(h.team) : 1) : 1;
+    const sx = (W - pad * 2) / COURT.W, sy = (H - pad * 2) / (full ? COURT.L : COURT.HL);
+    const map = (x, z) => [pad + (COURT.HW + z * sg) * sx, pad + (COURT.HL - x * sg) * sy];
     c.clearRect(0, 0, W, H);
     c.fillStyle = s.style === 'neo' ? 'rgba(236,159,60,0.92)' : 'rgba(150,110,60,0.88)';
     c.fillRect(0, 0, W, H);
     c.strokeStyle = 'rgba(255,255,255,0.9)';
     c.lineWidth = 1;
     c.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
-    const [k0x, k0y] = map(COURT.HL, -LINES.KEY_HW), [k1x, k1y] = map(LINES.FT_X, LINES.KEY_HW);
-    c.strokeRect(k0x, k0y, k1x - k0x, k1y - k0y);
-    const [hx, hy] = map(HOOP.X, 0);
-    // three-point line: corners straight, then the arc
-    const [cLx] = map(0, -LINES.THREE_Z), [cRx] = map(0, LINES.THREE_Z);
-    const [, turnY] = map(LINES.THREE_X, 0);
-    const a = Math.asin(LINES.THREE_Z / LINES.THREE_R);
-    c.beginPath();
-    c.moveTo(cLx, pad); c.lineTo(cLx, turnY);
-    c.arc(hx, hy, LINES.THREE_R * sx, Math.PI / 2 + a, Math.PI / 2 - a, true);
-    c.lineTo(cRx, pad);
-    c.stroke();
-    c.beginPath(); c.arc(hx, hy, 3, 0, Math.PI * 2); c.strokeStyle = '#ff6a1a'; c.lineWidth = 2; c.stroke();
+    // one end (in radar space: e = +1 top, -1 bottom)
+    const end = (e) => {
+      const m2 = (x, z) => map(e * x * sg, e * z * sg);
+      const [k0x, k0y] = m2(COURT.HL, -LINES.KEY_HW), [k1x, k1y] = m2(LINES.FT_X, LINES.KEY_HW);
+      c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 1;
+      c.strokeRect(Math.min(k0x, k1x), Math.min(k0y, k1y), Math.abs(k1x - k0x), Math.abs(k1y - k0y));
+      const [hx, hy] = m2(HOOP.X, 0);
+      const [cLx] = m2(0, -LINES.THREE_Z), [cRx] = m2(0, LINES.THREE_Z);
+      const [, turnY] = m2(LINES.THREE_X, 0);
+      const [, baseY] = m2(COURT.HL, 0);
+      const a = Math.asin(LINES.THREE_Z / LINES.THREE_R);
+      c.beginPath();
+      c.moveTo(cLx, baseY); c.lineTo(cLx, turnY);
+      if (e > 0) c.arc(hx, hy, LINES.THREE_R * sx, Math.PI / 2 + a, Math.PI / 2 - a, true);
+      else c.arc(hx, hy, LINES.THREE_R * sx, -Math.PI / 2 + a, -Math.PI / 2 - a, true);
+      c.lineTo(cRx, baseY);
+      c.stroke();
+      c.beginPath(); c.arc(hx, hy, full ? 2.4 : 3, 0, Math.PI * 2); c.strokeStyle = e > 0 ? '#ff6a1a' : 'rgba(255,255,255,0.7)'; c.lineWidth = 2; c.stroke();
+    };
+    end(1);
+    if (full) {
+      end(-1);
+      const [, my] = map(0, 0);
+      c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(pad, my); c.lineTo(W - pad, my); c.stroke();
+      c.beginPath(); c.arc(W / 2, my, LINES.CENTER_R * sx, 0, Math.PI * 2); c.stroke();
+    }
+    const dot = full ? 3.4 : 4.2;
     for (const p of m.players) {
       if (p === h) continue;
       const [x, y] = map(p.pos.x, p.pos.z);
       c.fillStyle = p.team === 0 ? s.kitA : s.kitB;
       c.strokeStyle = '#111'; c.lineWidth = 1.2;
-      c.beginPath(); c.arc(x, y, 4.2, 0, Math.PI * 2); c.fill(); c.stroke();
+      c.beginPath(); c.arc(x, y, dot, 0, Math.PI * 2); c.fill(); c.stroke();
     }
     if (h) {
       const [x, y] = map(h.pos.x, h.pos.z);
       const yaw = s.camYaw;
-      const dx = Math.cos(yaw), dy = -Math.sin(yaw);
+      const dx = Math.cos(yaw) * sg, dy = -Math.sin(yaw) * sg;
       c.fillStyle = '#ffc61a';
       c.beginPath();
       c.moveTo(x + dx * 10, y + dy * 10);

@@ -20,7 +20,8 @@ export class GameSession {
     const m = this.match;
     this.human = m.human;
     if (this.human) { this.ctl = new HumanController(m, this.human); m.humanCtl = this.ctl; }
-    this.cam = { mode: this.human ? 'fp' : 'orbit', yaw: Math.PI / 2, pitch: -0.1, eye: BODY.EYE, fov: app.settings.fov, bob: app.settings.bob ? 1 : 0, shake: app.settings.shake ? 1 : 0, angle: 0.9, radius: 11.5, height: 5.6, cx: 8.5 };
+    const full = m.full;
+    this.cam = { mode: this.human ? 'fp' : 'orbit', yaw: Math.PI / 2, pitch: -0.1, eye: BODY.EYE, fov: app.settings.fov, bob: app.settings.bob ? 1 : 0, shake: app.settings.shake ? 1 : 0, angle: 0.9, radius: full ? 14.5 : 11.5, height: full ? 6.4 : 5.6, cx: full ? 0 : 8.5 };
     this.acc = 0;
     this.paused = false;
     this.ended = false;
@@ -123,9 +124,35 @@ export class GameSession {
     on('whistle', (e) => {
       if (menu) return;
       if (e.reason === 'shotClock') a.play('buzzer', { gain: 0.6 }); else a.play('whistle', { gain: 0.8 });
-      const label = { out: 'OUT OF BOUNDS', shotClock: 'SHOT CLOCK', foul: 'FOUL', shootingFoul: 'SHOOTING FOUL', notCleared: 'NOT CLEARED', overtime: 'OVERTIME' }[e.reason] || '';
+      const label = { out: 'OUT OF BOUNDS', shotClock: 'SHOT CLOCK', foul: e.bonus ? 'FOUL · BONUS' : 'FOUL', shootingFoul: 'SHOOTING FOUL', notCleared: 'NOT CLEARED', overtime: 'OVERTIME', eightSec: '8 SECONDS', backcourt: 'BACKCOURT', fiveSec: '5 SECONDS' }[e.reason] || '';
       if (label && e.reason !== 'overtime') hud.showBanner(label, e.team != null ? `${short(1 - e.team)} ball` : '', 1500);
     });
+    // full court
+    on('tip', (e) => {
+      if (menu) return;
+      const mine = me() && e.jumpers.includes(me());
+      hud.showBanner('TIP-OFF', mine ? 'Jump (Space) as the ball comes down' : `${m.teams[0].name} v ${m.teams[1].name}`, 1900);
+    });
+    on('toss', () => { if (!menu) a.play('whistle', { gain: 0.5, rate: 1.1 }); });
+    on('tapped', (e) => { if (!menu && e.player === me()) hud.notify('WON THE TIP', 'good'); });
+    on('inbound', (e) => {
+      if (menu || practice) return;
+      if (e.kind !== 'baseline') hud.notify(`${short(e.team)} BALL`, '');
+    });
+    on('periodEnd', (e) => {
+      if (menu) return;
+      const [x, y] = m.scoreline;
+      const title = e.half ? 'HALFTIME' : e.ot ? (m.period > 4 ? 'END OF OVERTIME' : 'END OF REGULATION') : `END OF Q${e.period}`;
+      hud.showBanner(title, `${short(0)} ${x} - ${y} ${short(1)}${e.half ? ' · teams switch ends' : e.ot ? ' · tied: overtime' : ''}`, e.half ? 3600 : 2400);
+      a.play('cheer', { group: 'crowd', gain: 0.5 });
+    });
+    on('periodStart', (e) => {
+      if (menu) return;
+      const names = ['', '1ST QUARTER', '2ND QUARTER', '3RD QUARTER', '4TH QUARTER'];
+      hud.showBanner(e.ot ? (e.label === 'OT' ? 'OVERTIME' : e.label) : names[e.period] || e.label, `${m.teams[e.team].name} ball`, 1800);
+    });
+    on('eightSeconds', (e) => { if (!menu && me() && e.team === me().team) hud.notify('GET IT OVER HALF COURT IN 8 SECONDS', 'bad'); });
+    on('backcourt', (e) => { if (!menu && me() && e.team === me().team) hud.notify('NO GOING BACK OVER HALF COURT', 'bad'); });
     on('notCleared', (e) => { if (!menu && me() && e.team === me().team) hud.notify('NO BASKET · CLEAR IT FIRST', 'bad'); });
     on('foul', (e) => {
       if (menu) return;
@@ -136,7 +163,7 @@ export class GameSession {
     on('ftStart', (e) => { if (!menu) hud.showBanner('FREE THROW', `${e.player.name} · ${e.n} shot${e.n > 1 ? 's' : ''}`, 1500); });
     on('check', (e) => {
       if (menu) return;
-      if (e.first) hud.showBanner('TIP-OFF', `${m.teams[e.team].name} ball`, 1700);
+      if (e.first) hud.showBanner('CHECK BALL', `${m.teams[e.team].name} ball`, 1700);
       else if (!practice) hud.notify(`${short(e.team)} BALL · CHECK`, '');
     });
     on('snap', () => {
@@ -153,7 +180,7 @@ export class GameSession {
       const [x, y] = m.scoreline;
       const won = this.human && (this.human.team === 0 ? x > y : y > x);
       hud.showBanner(won ? 'YOU WIN!' : 'FINAL', `${short(0)} ${x} - ${y} ${short(1)}`, 3200, won ? 'mine' : '');
-      if (won) { a.play('cheer', { group: 'crowd', gain: 1 }); v.crowdLevel = 1; for (let i = 0; i < 3; i++) setTimeout(() => v.celebrate(HOOP.X - 4 + Math.random() * 4, 3, (Math.random() - 0.5) * 8, this.human.team, 1.2), i * 450); }
+      if (won) { a.play('cheer', { group: 'crowd', gain: 1 }); v.crowdLevel = 1; const hx = m.hoopX(this.human.team), sg = Math.sign(hx); for (let i = 0; i < 3; i++) setTimeout(() => v.celebrate(hx - sg * (4 - Math.random() * 4), 3, (Math.random() - 0.5) * 8, this.human.team, 1.2), i * 450); }
     });
   }
 
@@ -186,7 +213,7 @@ export class GameSession {
     const alpha = this.paused ? 1 : this.acc / DT;
     // atmosphere: the crowd follows the action near the rim
     const b = m.ball.pos;
-    const near = Math.max(0, 1 - distToHoop(b.x, b.z) / 7);
+    const near = Math.max(0, 1 - distToHoop(b.x, b.z, b.x >= 0 ? 1 : -1) / 7);
     this.excite = Math.max(near * 0.4, this.excite - dtReal * 0.3);
     if (this.cfg.mode !== 'menu') this.audio.setExcitement(this.excite);
     // eye height: lower in a stance and on landing, and with the jump (added by the view)
@@ -196,7 +223,14 @@ export class GameSession {
       const land = m.time - h.landT;
       if (land >= 0 && land < 0.25) eye -= 0.09 * Math.sin((land / 0.25) * Math.PI);
       this.cam.eye += (eye - this.cam.eye) * (1 - Math.exp(-dtReal * 14));
-    } else this.cam.angle += dtReal * 0.04;
+    } else {
+      this.cam.angle += dtReal * 0.04;
+      // full court: the camera drifts toward the end where the ball is
+      if (m.full) {
+        const tx = Math.max(-7, Math.min(7, m.ball.pos.x * 0.55));
+        this.cam.cx += (tx - this.cam.cx) * (1 - Math.exp(-dtReal * 0.5));
+      }
+    }
     this.cam.fov = this.app.settings.fov;
     this.cam.bob = this.app.settings.bob ? 1 : 0;
     this.cam.shake = this.app.settings.shake ? 1 : 0;
@@ -235,7 +269,7 @@ export class GameSession {
     const h = this.human;
     const t = this.ctl.passTarget;
     if (t && this.ctl.targetVisible && m.teams[h.team].players.length > 1) mk.showRing(t.pos.x, t.pos.z, m.time);
-    if (m.rules && m.offense !== h.team && (m.phase === 'live' || m.phase === 'check')) {
+    if (m.rules && m.offense !== h.team && (m.phase === 'live' || m.phase === 'check' || m.phase === 'inbound')) {
       const man = m.ai.markOf(h);
       if (man) mk.showDef(man.pos.x, man.pos.z);
     }
@@ -251,7 +285,10 @@ export class GameSession {
     if (h) {
       const b = m.ball;
       const mine = b.owner === h;
-      if (m.phase === 'check' && m.checker === h) hint = touch ? 'Move or tap a button to check the ball in' : 'Move or press any button to check the ball in';
+      if (m.phase === 'tip') hint = m.tip && m.tip.jumpers.includes(h) ? (touch ? 'Tap JUMP as the ball comes down' : 'Space: jump for the tip as the ball comes down') : 'Tip-off';
+      else if (m.phase === 'inbound') hint = m.offense === h.team ? (touch ? 'Get open · CALL for the throw-in' : 'Get open · RMB calls for the throw-in') : 'Find your man (red ring)';
+      else if (m.phase === 'break') hint = touch ? 'Tap any button to continue' : 'Press any action to continue';
+      else if (m.phase === 'check' && m.checker === h) hint = touch ? 'Move or tap a button to check the ball in' : 'Move or press any button to check the ball in';
       else if (m.phase === 'ft') hint = m.ft && m.ft.shooter === h ? (touch ? 'Hold SHOOT, release in the green' : 'Hold left mouse, release in the green') : 'Free throw';
       else if (m.phase === 'scored' || m.phase === 'dead') hint = touch ? 'Tap any button to skip' : 'Press any action to skip';
       else if (touch) hint = '';
@@ -259,10 +296,19 @@ export class GameSession {
       else if (b.owner && b.owner.team !== h.team) hint = b.owner.pos.distXZ(h.pos) < 2.2 ? 'E steal · C stance · Space block' : 'Stay between your man and the rim · C stance';
       else if (b.owner && b.owner.team === h.team) hint = h.requestUntil > m.time ? 'Ball called for' : 'RMB call for the ball';
       else if (b.state === 'free' && b.shot) hint = 'Space jump for the rebound';
+      // full court: the 8-second count while bringing it up
+      if (m.full && m.phase === 'live' && b.owner && b.owner.team === h.team && !m.frontcourt && m.backcourtT > 4) hint = `Over half court: ${Math.max(0, 8 - m.backcourtT).toFixed(0)} s`;
     }
     if (this.cfg.practice && this.cfg.practice.hint) hint = this.cfg.practice.hint(this) ?? hint;
     let phaseText = '';
-    if (m.phase === 'check') phaseText = 'CHECK BALL';
+    if (m.full) {
+      if (m.phase === 'tip') phaseText = 'TIP-OFF';
+      else if (m.phase === 'inbound') phaseText = 'THROW-IN';
+      else if (m.phase === 'ft' && m.ft) phaseText = `FREE THROW ${m.ft.total - m.ft.left + (m.ft.released ? 0 : 1)}/${m.ft.total}`;
+      else if (m.phase === 'break') phaseText = m.period === 2 ? 'HALFTIME' : `END OF ${m.periodLabel}`;
+      else if (m.phase === 'over') phaseText = 'FINAL';
+      else phaseText = `TEAM FOULS ${m.teams[0].fouls} - ${m.teams[1].fouls}`;
+    } else if (m.phase === 'check') phaseText = 'CHECK BALL';
     else if (m.phase === 'ft' && m.ft) phaseText = `FREE THROW ${m.ft.total - m.ft.left + (m.ft.released ? 0 : 1)}/${m.ft.total}`;
     else if (m.overtime) phaseText = 'OVERTIME · NEXT BASKET WINS';
     else if (m.phase === 'over') phaseText = 'FINAL';

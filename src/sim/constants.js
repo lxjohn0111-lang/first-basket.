@@ -1,6 +1,8 @@
 // Court, hoop, ball and rule constants (metres, seconds, Y up).
-// FIBA court: 28 x 15 m. Games are played on the +X half (half-court 3v3 / 1v1),
-// attacking the basket at the +X end; the other half and hoop are still built.
+// FIBA court: 28 x 15 m with a basket at each end (x = +-12.425). Full-court games use
+// both: each team attacks one basket (its attack sign s = +1 or -1, swapped at half
+// time). Half-court games (3x3 / 1v1) and practice are played on the +X half only.
+// Everything below is written for the +X basket; `s` mirrors it (x -> s*x, z -> s*z).
 
 export const DT = 1 / 120; // fixed physics timestep
 
@@ -9,7 +11,7 @@ export const COURT = {
   HL: 14, HW: 7.5,
 };
 
-// the hoop the match is played at (+X end)
+// the +X basket (the -X one is its mirror image)
 export const HOOP = {
   X: 14 - 1.575,      // rim centre, 1.575 m in from the baseline
   Z: 0,
@@ -59,7 +61,26 @@ export const RULES = {
   BONUS_FOULS: 6,         // from this team foul on, every foul is two free throws
 };
 
-// game length presets: clock seconds and the score that wins outright
+// full-court rules (FIBA style): 24-second shot clock (14 after an offensive rebound
+// off the rim), 8 seconds to cross half court, 5 seconds to inbound, team fouls per
+// quarter with free throws from the 5th
+export const FULL = {
+  SHOT_CLOCK: 24,
+  OREB_CLOCK: 14,
+  BACKCOURT: 8,
+  INBOUND: 5,
+  BONUS_FOULS: 5,
+  QUARTERS: 4,
+};
+
+// full-court game lengths: real-time minutes per quarter
+export const FULL_LENGTHS = {
+  short: { quarter: 120, ot: 60, label: '4 × 2 min' },
+  normal: { quarter: 180, ot: 90, label: '4 × 3 min' },
+  long: { quarter: 300, ot: 120, label: '4 × 5 min' },
+};
+
+// half-court game length presets: clock seconds and the score that wins outright
 export const GAME_LENGTHS = {
   short: { clock: 180, target: 11, label: '3 min · to 11' },
   normal: { clock: 300, target: 21, label: '5 min · to 21' },
@@ -81,18 +102,24 @@ export const SPOTS = {
   slotR: [HOOP.X - 6.9, 2.6],
 };
 
-export function distToHoop(x, z) { return Math.hypot(x - HOOP.X, z - HOOP.Z); }
+// rim centre x of the basket attacked with sign s
+export const hoopX = (s = 1) => s * HOOP.X;
+export function distToHoop(x, z, s = 1) { return Math.hypot(x - s * HOOP.X, z - HOOP.Z); }
+// a named spot for the team attacking with sign s
+export function spot(name, s = 1) { const p = SPOTS[name]; return [p[0] * s, p[1] * s]; }
 
-// is a floor position beyond the three-point line (on the line counts as two)
-export function isThree(x, z) {
+// is a floor position beyond the three-point line of basket s (on the line counts as two)
+export function isThree(x, z, s = 1) {
+  x *= s; z *= s;
   if (Math.abs(z) > LINES.THREE_Z) return true;
   if (x > LINES.THREE_X) return false;
-  return distToHoop(x, z) > LINES.THREE_R + 0.03;
+  return Math.hypot(x - HOOP.X, z - HOOP.Z) > LINES.THREE_R + 0.03;
 }
 
-// inside the half court's playing area (lines are out)
-export function inBounds(x, z, margin = 0) {
-  return x > margin && x < COURT.HL - margin && Math.abs(z) < COURT.HW - margin;
+// inside the playing area (lines are out): the +X half, or the whole floor
+export function inBounds(x, z, margin = 0, full = false) {
+  if (Math.abs(z) >= COURT.HW - margin) return false;
+  return full ? Math.abs(x) < COURT.HL - margin : x > margin && x < COURT.HL - margin;
 }
 
 export const ATTRS = ['shooting', 'handling', 'speed', 'defense', 'passing', 'vertical'];

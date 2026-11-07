@@ -32,7 +32,7 @@ export class HumanController {
     if (ml > 1) { mx /= ml; mz /= ml; }
     const mine = hasBall(m, p);
     const oppBall = b.owner && b.owner.team !== p.team;
-    p.stance = !mine && !p.airborne && (inp.stance || (inp.rmb && !!oppBall)) && m.phase === 'live';
+    p.stance = !mine && !p.airborne && (inp.stance || (inp.rmb && !!oppBall)) && (m.phase === 'live' || m.phase === 'inbound');
     p.handsUp = !mine && inp.lmb && m.phase === 'live';
     p.sprint = inp.sprint && ml > 0.1 && !p.stance;
     const max = p.maxSpeed(p.sprint, mine);
@@ -65,7 +65,20 @@ export class HumanController {
     if (a && a.type === 'shot' && !a.released) a.aimYaw = yaw;
 
     const ph = m.phase;
-    if (ph === 'scored' || ph === 'dead' || ph === 'over') {
+    if (ph === 'tip') {
+      // the human jumper goes up for the tip
+      const tip = m.tip;
+      for (const e of this.buffer) if (e.type === 'jump' && tip && tip.jumpers.includes(p) && !p.airborne && !p.action) startJumpAction(m, p);
+      this.buffer.length = 0;
+      return;
+    }
+    if (ph === 'inbound') {
+      // moving to get open; RMB calls for the throw-in
+      for (const e of this.buffer) if (e.type === 'pass' && !mine && m.offense === p.team) this.requestPass();
+      this.buffer.length = 0;
+      return;
+    }
+    if (ph === 'scored' || ph === 'dead' || ph === 'over' || ph === 'break') {
       for (const e of this.buffer) if (!e.type.endsWith('Up')) m.requestSkip();
       this.buffer.length = 0;
       return;

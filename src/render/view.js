@@ -218,8 +218,8 @@ export class SceneView {
     const m = this.match;
     if (!m) return;
     if (force) { this.scoreTex.key = ''; this.shotTex.key = ''; }
-    const live = m.phase === 'live' || m.phase === 'check';
-    this.scoreTex.update(m.teams[0].short, m.teams[1].short, m.scoreline, m.rules ? m.displayClock : '--:--', m.shotClockOn ? m.displayShot : '', live ? m.offense : -1, this.style, m.phase === 'over');
+    const live = m.phase === 'live' || m.phase === 'check' || m.phase === 'inbound';
+    this.scoreTex.update(m.teams[0].short, m.teams[1].short, m.scoreline, m.rules ? m.displayClock : '--:--', m.shotClockOn ? m.displayShot : '', live ? m.offense : -1, this.style, m.phase === 'over', m.full ? m.periodLabel : '');
     this.shotTex.update(m.shotClockOn && m.phase !== 'over' ? m.displayShot : '', this.style);
   }
 
@@ -327,15 +327,17 @@ export class SceneView {
       st.amp = Math.max(st.amp * 0.9, n.amp);
       const b = this.match.ball;
       const sp = Math.hypot(b.vel.x, b.vel.z) + 0.6;
-      st.dx = (b.vel.x / sp) * 0.05 + 0.012; st.dz = (b.vel.z / sp) * 0.05;
+      st.dx = (b.vel.x / sp) * 0.05 + (st.x >= 0 ? 0.012 : -0.012); st.dz = (b.vel.z / sp) * 0.05;
     } else st.t += dt;
     const bulge = st.amp * Math.exp(-st.t * 9);
     const sway = Math.sin(st.t * 13) * Math.exp(-st.t * 2.6) * Math.min(1, st.amp * 1.6);
     if (st.t > 4) st.amp = 0;
-    SU.uNetA.value.set(st.x, st.y, st.z, bulge);
-    SU.uNetDA.value.set(st.dx * sway, 0, st.dz * sway);
-    SU.uNetB.value.set(0, -9, 0, 0);
-    SU.uNetDB.value.set(0, 0, 0);
+    // the net the ball went through moves; the one at the other end hangs still
+    const [A, DA, B, DB] = st.x >= 0 ? [SU.uNetA, SU.uNetDA, SU.uNetB, SU.uNetDB] : [SU.uNetB, SU.uNetDB, SU.uNetA, SU.uNetDA];
+    A.value.set(st.x, st.y, st.z, bulge);
+    DA.value.set(st.dx * sway, 0, st.dz * sway);
+    B.value.set(0, -9, 0, 0);
+    DB.value.set(0, 0, 0);
   }
 
   updateCamera(cam, dt, alpha) {

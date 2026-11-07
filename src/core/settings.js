@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS = {
   sensitivity: 1, invertY: false, fov: 100,
   master: 0.8, sfx: 0.9, crowd: 0.6,
   difficulty: 'pro', bob: true, shake: true, quality: 'high', gameLength: 'normal', meter: true,
+  quarterLength: 'short', teamSize: 5, // full-court games: minutes per quarter, players per side
   touch: 'auto', // on-screen touch controls: auto (touch screens), on, off
 };
 

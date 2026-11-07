@@ -1,18 +1,20 @@
 // Full games with a scripted player driving the real human controls (the same
 // HumanController the keyboard and mouse feed): move and look, hold-and-release
 // shooting timed on the meter, passing, calling for the ball, stance, steals and jumps.
-// node tests/human.mjs [games] [3v3|1v1] [difficulty] [timing noise]
+// node tests/human.mjs [games] [full|3v3|1v1] [difficulty] [timing noise]
+// (full: a 5v5 full-court game with two-minute quarters)
 import { Match } from '../src/sim/match.js';
 import { HumanController } from '../src/sim/human.js';
 import { TEAMS, teamConfig, defaultPlayer } from '../src/game/teams.js';
-import { DT, HOOP, distToHoop, isThree, SPOTS } from '../src/sim/constants.js';
+import { DT, HOOP, distToHoop, spot } from '../src/sim/constants.js';
 import { yawOf, angleDiff } from '../src/sim/vec.js';
 
 const games = Number(process.argv[2] || 3);
 const fmt = process.argv[3] || '3v3';
 const diff = process.argv[4] || 'pro';
 const noise = Number(process.argv[5] ?? 0.04);
-const size = fmt === '1v1' ? 1 : 3;
+const full = fmt === 'full';
+const size = fmt === '1v1' ? 1 : full ? 5 : 3;
 let fails = 0;
 const agg = { pts: 0, fga: 0, fgm: 0, stl: 0, blk: 0, ast: 0, tov: 0, wins: 0, opp: 0, perfect: 0, shots: 0, dunks: 0, layups: 0, presses: {} };
 
@@ -30,7 +32,10 @@ function bot(m, ctl, rng) {
     return d;
   };
   inp.stance = false; inp.rmb = false;
-  const hoopYaw = yawOf(HOOP.X - h.pos.x, HOOP.Z - h.pos.z);
+  // the basket I attack, and the one the team with the ball attacks
+  const s = m.side(h.team), HX = s * HOOP.X;
+  const ds = m.side(m.offense), DX = ds * HOOP.X;
+  const hoopYaw = yawOf(HX - h.pos.x, HOOP.Z - h.pos.z);
   // holding the shoot button: release at the sweet spot (with some human error)
   if (st.hold) {
     const a = h.action;
@@ -44,15 +49,40 @@ function bot(m, ctl, rng) {
     return;
   }
   if (m.phase === 'check' && m.checker === h) { inp.moveF = 0.5; inp.yaw = hoopYaw; return; }
+  if (m.phase === 'tip') {
+    // jump as the ball comes down to about 3.4 m
+    inp.moveF = 0; inp.moveR = 0;
+    inp.yaw = yawOf(b.pos.x - h.pos.x + 0.001, b.pos.z - h.pos.z);
+    if (m.tip && m.tip.jumpers.includes(h) && m.tip.tossed && b.vel.y < 0 && b.pos.y < 3.75 && !h.airborne && st.cd <= 0) { press('jump'); st.cd = 2; }
+    return;
+  }
+  if (m.phase === 'inbound') {
+    // get open for the throw-in, and call for it
+    if (m.offense === h.team && m.inb) {
+      const ib = m.inb;
+      moveTo(ib.x - Math.sign(ib.x || 1) * (ib.kind === 'baseline' ? 3.5 : 1.5), ib.z - (ib.kind === 'baseline' ? 0 : Math.sign(ib.z) * 3.2));
+      inp.yaw = yawOf(ib.x - h.pos.x, ib.z - h.pos.z);
+      if (st.cd <= 0 && rng() < 0.05) { press('pass'); st.cd = 1.5; }
+    } else { inp.moveF = 0; inp.moveR = 0; }
+    return;
+  }
   if (m.phase !== 'live') { inp.moveF = 0; inp.moveR = 0; return; }
   const mine = b.owner === h;
   if (mine) {
-    const d = distToHoop(h.pos.x, h.pos.z);
-    if (m.mustClear === h.team) { const a = Math.atan2(h.pos.z, h.pos.x - HOOP.X); moveTo(HOOP.X + Math.cos(a) * 7.6, Math.sin(a) * 7.6, true); inp.yaw = yawOf(inp.moveF, 0) + hoopYaw * 0; inp.yaw = hoopYaw; return; }
+    const d = distToHoop(h.pos.x, h.pos.z, s);
+    if (m.mustClear === h.team) { const a = Math.atan2(h.pos.z, h.pos.x - HOOP.X); moveTo(HOOP.X + Math.cos(a) * 7.6, Math.sin(a) * 7.6, true); inp.yaw = hoopYaw; return; }
     st.retarget -= DT;
+    // full court: over half court first
+    if (full && !m.frontcourt && s * h.pos.x < 0.5) {
+      const [tx, tz] = spot('top', s);
+      inp.yaw = hoopYaw;
+      moveTo(tx, tz, m.backcourtT > 4);
+      return;
+    }
     if (!st.target || st.retarget <= 0) {
       const r = rng();
-      st.target = r < 0.35 ? { x: HOOP.X - 0.8, z: (rng() - 0.5) * 1.2, drive: true } : r < 0.7 ? { x: SPOTS.wingL[0], z: SPOTS.wingL[1] * (rng() < 0.5 ? 1 : -1) } : { x: SPOTS.elbowR[0], z: SPOTS.elbowR[1] * (rng() < 0.5 ? 1 : -1) };
+      const [wx, wz] = spot('wingL', s), [ex, ez] = spot('elbowR', s);
+      st.target = r < 0.35 ? { x: HX - s * 0.8, z: (rng() - 0.5) * 1.2, drive: true } : r < 0.7 ? { x: wx, z: wz * (rng() < 0.5 ? 1 : -1) } : { x: ex, z: ez * (rng() < 0.5 ? 1 : -1) };
       st.retarget = 2.5;
     }
     inp.yaw = hoopYaw;
@@ -76,7 +106,8 @@ function bot(m, ctl, rng) {
   st.target = null;
   if (b.owner && b.owner.team === h.team) {
     // spot up, call for it now and then
-    moveTo(SPOTS.wingR[0], SPOTS.wingR[1]);
+    const [wx, wz] = spot('wingR', s);
+    moveTo(wx, wz, Math.hypot(wx - h.pos.x, wz - h.pos.z) > 6);
     inp.yaw = yawOf(b.pos.x - h.pos.x, b.pos.z - h.pos.z);
     if (st.cd <= 0 && rng() < 0.01) { press('pass'); st.cd = 1; }
     return;
@@ -92,9 +123,10 @@ function bot(m, ctl, rng) {
   // defence: between my man and the rim, stance, poke, contest
   const man = m.ai.markOf(h) || b.owner;
   if (!man) return;
-  const hx = HOOP.X - man.pos.x, hz = HOOP.Z - man.pos.z, hl = Math.hypot(hx, hz) || 1;
+  const hx = DX - man.pos.x, hz = HOOP.Z - man.pos.z, hl = Math.hypot(hx, hz) || 1;
   const gap = b.owner === man ? 1.1 : 2.2;
-  moveTo(man.pos.x + (hx / hl) * gap, man.pos.z + (hz / hl) * gap);
+  const tx = man.pos.x + (hx / hl) * gap, tz = man.pos.z + (hz / hl) * gap;
+  moveTo(tx, tz, Math.hypot(tx - h.pos.x, tz - h.pos.z) > 4);
   inp.yaw = yawOf(man.pos.x - h.pos.x, man.pos.z - h.pos.z);
   inp.stance = b.owner === man && h.pos.distXZ(man.pos) < 2.2;
   if (b.owner === man && st.cd <= 0 && h.pos.distXZ(man.pos) < 1.3 && b.pos.y < 0.7 && rng() < 0.08) { press('steal'); st.cd = 0.8; }
@@ -106,14 +138,15 @@ for (let g = 0; g < games; g++) {
   let seed = 4242 + g * 17;
   const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
   const me = { ...defaultPlayer(), archetype: ['slasher', 'shooter', 'guard', 'big'][g % 4] };
-  const m = new Match({ seed: 900 + g, clock: 300, target: fmt === '1v1' ? 11 : 21, difficulty: diff, teams: [teamConfig(TEAMS[g % 8], size, me), teamConfig(TEAMS[(g + 5) % 8], size)] });
+  const tA = teamConfig(TEAMS[g % 8], size, full && g % 2 ? null : me), tB = teamConfig(TEAMS[(g + 5) % 8], size, full && g % 2 ? me : null);
+  const m = new Match({ court: full ? 'full' : 'half', quarter: 120, seed: 900 + g, clock: 300, target: fmt === '1v1' ? 11 : 21, difficulty: diff, teams: [tA, tB] });
   const ctl = new HumanController(m, m.human);
   m.humanCtl = ctl;
   m.events.on('shot', (e) => { if (e.player === m.human) { agg.shots++; if (e.grade.tier === 'perfect') agg.perfect++; if (e.kind === 'dunk') agg.dunks++; if (e.kind === 'layup') agg.layups++; } });
   m.start();
   let steps = 0;
   try {
-    while (m.phase !== 'over' && m.time < 900) {
+    while (m.phase !== 'over' && m.time < (full ? 1400 : 900)) {
       bot(m, ctl, rng);
       m.step(DT); steps++;
       if (!m.ball.pos.isFinite() || m.players.some((p) => !p.pos.isFinite())) throw new Error('NaN at ' + m.time);

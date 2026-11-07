@@ -6,6 +6,9 @@
 // release on, the ball is pure physics against the rim, backboard and net.
 import { clamp, angleDiff, yawOf } from './vec.js';
 import { HOOP, distToHoop, isThree } from './constants.js';
+
+// the attack sign of a player's team (+1 attacks the +X basket)
+const sideOf = (m, p) => (m.side ? m.side(p.team) : 1);
 import { solveLaunchSpeed } from './ball.js';
 import { BODY } from './player.js';
 
@@ -24,18 +27,19 @@ export function canDunk(p, runUp) {
 // what pressing shoot would do from here
 export function shotKind(m, p) {
   if (m.phase === 'ft') return 'ft';
-  const d = distToHoop(p.pos.x, p.pos.z);
-  const toward = (p.vel.x * (HOOP.X - p.pos.x) + p.vel.z * (HOOP.Z - p.pos.z)) / Math.max(0.01, d);
+  const s = sideOf(m, p);
+  const d = distToHoop(p.pos.x, p.pos.z, s);
+  const toward = (p.vel.x * (s * HOOP.X - p.pos.x) + p.vel.z * (HOOP.Z - p.pos.z)) / Math.max(0.01, d);
   if (d < 2.3 && canDunk(p, toward > 1.6) && (toward > 1.6 || d < 1.25)) return 'dunk';
   if (d < 3.3) return 'layup';
-  return isThree(p.pos.x, p.pos.z) ? 'three' : 'jumper';
+  return isThree(p.pos.x, p.pos.z, s) ? 'three' : 'jumper';
 }
 export const SHOT_LABEL = { dunk: 'DUNK', layup: 'LAYUP', jumper: 'JUMP SHOT', three: '3PT SHOT', ft: 'FREE THROW' };
 
 // how closely the nearest defender contests a shooter (0 open .. 1 smothered)
 export function pressureOn(m, p) {
   let best = 0;
-  const hx = HOOP.X - p.pos.x, hz = HOOP.Z - p.pos.z;
+  const hx = sideOf(m, p) * HOOP.X - p.pos.x, hz = HOOP.Z - p.pos.z;
   const hl = Math.hypot(hx, hz) || 1;
   for (const q of m.players) {
     if (q.team === p.team) continue;
@@ -54,7 +58,7 @@ export function pressureOn(m, p) {
 
 // the sweet spot on the meter: centre and half width
 export function sweetSpot(m, p, kind, pressure, moving) {
-  const d = distToHoop(p.pos.x, p.pos.z);
+  const d = distToHoop(p.pos.x, p.pos.z, sideOf(m, p));
   let c, w;
   const s = p.attrs.shooting / 99;
   if (kind === 'layup') { c = 0.5; w = 0.09 + 0.05 * (p.attrs.handling / 99); }
@@ -86,7 +90,8 @@ export function launchVelocity(m, p, ctx) {
   const s = p.attrs.shooting / 99;
   const g = grade(ctx.charge, ctx.spot);
   // aim a touch past the centre of the rim, toward the board
-  const tx = HOOP.X + 0.035, tz = HOOP.Z;
+  const sd = sideOf(m, p);
+  const tx = sd * (HOOP.X + 0.035), tz = HOOP.Z;
   const D = Math.hypot(tx - P.x, tz - P.z);
   const toYaw = yawOf(tx - P.x, tz - P.z);
   // power: outside the sweet spot the shot comes up short or long

@@ -220,14 +220,15 @@ export class Animator {
       const ft = a.t - a.rt;
       if (a.kind === 'dunk' && air) {
         // hanging on the rim
-        const rx = HOOP.X - root.x, rz = HOOP.Z - root.z, rl = Math.hypot(rx, rz) || 1;
-        const fx = HOOP.X - (rx / rl) * HOOP.R, fz = HOOP.Z - (rz / rl) * HOOP.R;
+        const HX = (root.x >= 0 ? 1 : -1) * HOOP.X;
+        const rx = HX - root.x, rz = HOOP.Z - root.z, rl = Math.hypot(rx, rz) || 1;
+        const fx = HX - (rx / rl) * HOOP.R, fz = HOOP.Z - (rz / rl) * HOOP.R;
         W[0] = tmp[12].set(fx, HOOP.Y + 0.02, fz).addScaledVector(left, 0.14);
         W[1] = tmp[13].set(fx, HOOP.Y + 0.02, fz).addScaledVector(left, -0.14);
       } else if (ft < 0.55) {
         // follow-through: the shooting arm reaches up toward the rim, wrist down
         const k = 1 - smooth((ft - 0.35) / 0.2);
-        const hx = HOOP.X - root.x, hz = HOOP.Z - root.z, hl = Math.hypot(hx, hz) || 1;
+        const hx = (this.p.shotSide ?? 1) * HOOP.X - root.x, hz = HOOP.Z - root.z, hl = Math.hypot(hx, hz) || 1;
         const sy = rootY + BODY.SHOULDER;
         W[1] = tmp[12].set(root.x + (hx / hl) * 0.38 - left.x * 0.12, sy + 0.58, root.z + (hz / hl) * 0.38 - left.z * 0.12);
         W[0] = tmp[13].set(root.x + (hx / hl) * 0.25 + left.x * 0.2, sy + 0.38, root.z + (hz / hl) * 0.25 + left.z * 0.2);
