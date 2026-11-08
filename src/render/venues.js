@@ -343,9 +343,10 @@ function scoreboard(b, x, y, z, ry, w, h, screens) {
 
 // ---------------------------------------------------------------------------
 export function buildVenue(type, ctx) {
-  const { atlas, quality = 'high', homeName = 'HOME', awayName = 'AWAY', seed = 7 } = ctx;
+  const { atlas, quality = 'high', homeName = 'HOME', awayName = 'AWAY', seed = 7, crowd = 1 } = ctx;
   const rand = rnd(seed * 31 + type.length);
-  const density = quality === 'low' ? 0.35 : quality === 'medium' ? 0.65 : 1;
+  // crowd: a thinner crowd on phones (the stands are the bulk of the triangles)
+  const density = (quality === 'low' ? 0.35 : quality === 'medium' ? 0.65 : 1) * crowd;
   const b = new GeoBuilder({ bob: true, atlas: true });
   const bc = new GeoBuilder({ atlas: true });
   const stats = { seats: [], people: 0 };
@@ -354,7 +355,7 @@ export function buildVenue(type, ctx) {
   buildCourt(b, { atlas, logo: ctx.logo || 'COURTSIDE' });
   buildHoop(bc, 1, screens);
   buildHoop(bc, -1, screens);
-  const words = ['COURTSIDE', homeName.toUpperCase(), 'SHOT CLOCK 14', awayName.toUpperCase(), 'DEFENSE!', 'FIRST PERSON HOOPS'];
+  const words = ['COURTSIDE', homeName.toUpperCase(), 'GAME DAY', awayName.toUpperCase(), 'DEFENSE!', 'FIRST PERSON HOOPS'];
   if (type === 'gym' || type === 'practice') {
     const hx = 20, hz = 14.5, h = 9;
     room(b, hx, hz, h, { windows: 6, lamps: [5, 3], dado: 1.8 });

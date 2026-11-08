@@ -11,6 +11,10 @@ A first-person 3D basketball game for the browser. You play one player and see e
 
 Courtside is built on the engine and design language of **First Touch** (the author's first-person football game, `lxjohn0111-lang/football-life`). The reusable parts were *copied* into this repository and adapted; the First Touch repository itself was only read (see "Relationship to First Touch" below).
 
+## First visit
+
+A new player goes straight into a two-minute interactive **tutorial** on the practice court, not the menu. It has six short steps: look at the basket, dribble to the gold circle, a jump shot, a finish at the rim, a pass, and a steal. Each step shows one line saying what to do and one line with the control for the device (keyboard and mouse, or touch). Every step has a time limit after which the coach moves on. Skip (Enter) ends it at any time. Then the game asks **"Are you ready?"**, and its button starts a 5v5 full-court game. Later visits open the main menu; the tutorial can be replayed from Practice.
+
 ## Launching
 
 ```sh
@@ -20,6 +24,25 @@ node server.js     # http://localhost:8080
 ```
 
 `index.html` loads the prebuilt `dist/game.js` as a classic script, so it also runs by double-clicking `index.html`. A browser with WebGL2 is required.
+
+**Phones and tablets.** Touch controls appear by themselves. The game is lighter on touch devices:
+- medium quality by default;
+- a thinner crowd;
+- at most 1.5 device pixels per CSS pixel;
+- the menus' background game runs at 30 fps (and in the gym on phones), while play runs at the screen's rate;
+- the render resolution steps down by itself if frames get slow.
+
+The HUD, radar and every screen (the career hub included) fit a phone in landscape.
+
+## CrazyGames
+
+`npm run crazygames` writes `crazygames/upload/` (`index.html` with the CrazyGames HTML5 SDK v3, and `game.js`) and `crazygames/courtside-crazygames.zip` (upload this). On CrazyGames:
+- progress is saved through the SDK's data module (career, My Player, records, settings, style, tutorial), so it follows logged-in players across devices;
+- gameplayStart and gameplayStop follow real play, and a win or a finished tutorial is a happytime;
+- the platform's mute silences the game;
+- the player's name is the CrazyGames username (or "Rookie" for a guest).
+
+No ads are requested. Anywhere else (no SDK, other domains) the game saves to localStorage as before. The gameplay videos are in `crazygames/video/` (`npm run video`). Portal fields and checks: `crazygames/SUBMISSION.md`.
 
 ## Controls
 
@@ -102,7 +125,7 @@ node tests/human.mjs 4 3v3 pro    # half-court games with the scripted player
 node tests/shooting.mjs 75        # make rates by distance and release timing
 ```
 
-Browser checks (Playwright with Chromium, `node server.js` running; screenshots in `tests/out/`): `tests/flow.mjs` (every menu; a full-court game from the tip-off to the result and box score; pause/settings/style/how-to; My Player persistence; half-court 1v1; a career from player creation through the hub tabs, training, a played game to its report, a simulated game and retiring; the Practice Court drills and the Shootout; failing on any page error), `tests/shots.mjs` (menu and first-person views in both styles), `tests/mobile.mjs` (phone emulation: touch controls and compact HUD).
+Browser checks (Playwright with Chromium, `node server.js` running; screenshots in `tests/out/`): `tests/tutorial.mjs` (the first visit played through with the real controls, "Are you ready?" into a 5v5 game, Skip, a second visit, a phone), `tests/crazygames.mjs` (the CrazyGames build with a stand-in SDK: data-module saves and reloads, gameplay events, happytime, mute, the locked name, no ads, the localStorage fallbacks; run `npm run crazygames` first), `tests/flow.mjs` (every menu; a full-court game from the tip-off to the result and box score; pause/settings/style/how-to; My Player persistence; half-court 1v1; a career from player creation through the hub tabs, training, a played game to its report, a simulated game and retiring; the Practice Court drills and the Shootout; failing on any page error), `tests/shots.mjs` (menu and first-person views in both styles), `tests/mobile.mjs` (phone emulation: touch controls and compact HUD).
 
 ## Known simplifications
 

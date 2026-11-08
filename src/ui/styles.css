@@ -577,6 +577,15 @@ html[data-touch="1"] .hud-power { width: 96px; }
 .coach-stars { color: var(--primary); font: 900 13px var(--f-display); white-space: nowrap; }
 .coach-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(255, 255, 255, 0.08); }
 .coach-bar i { display: block; height: 100%; background: var(--primary); }
+/* a step just done: the card flashes green */
+.coach.ok { border-color: var(--success); }
+.coach.ok .coach-say { color: var(--success); }
+/* the screen after the tutorial: one question, one button */
+.ready { text-align: center; width: min(560px, 94vw); }
+.ready .go-big { margin: var(--s3) 0 var(--s2); }
+.ready .ready-sub { color: var(--text2); font-weight: 800; font-size: 15px; line-height: 1.4; }
+.ready .ready-done { display: inline-flex; gap: 8px; align-items: center; font: 900 13px var(--f-display); letter-spacing: 1px; text-transform: uppercase; color: var(--success); }
+.ready .btn.xl { margin-top: var(--s5); min-width: min(360px, 80vw); justify-content: center; }
 @keyframes dotPulse { from { transform: scale(0.85); } to { transform: scale(1.25); } }
 /* the warm-up hides the match furniture; notes drop below the card */
 .hud.tut .hud-top, .hud.tut .hud-clock, .hud.tut .hud-phase, .hud.tut .hud-player, .hud.tut .hud-hint, .hud.tut .hud-arrow { display: none; }
@@ -684,6 +693,11 @@ html[data-touch="1"] .coach { top: calc(6px + env(safe-area-inset-top, 0px)); wi
 .tut-click { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); pointer-events: none; text-align: center; color: #fff; font: 900 30px/1.1 var(--f-display); text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 4px 0 var(--line), 0 0 24px rgba(0, 0, 0, 0.5); animation: tutClick 1.1s ease-in-out infinite alternate; z-index: 6; }
 .drag-hint { position: absolute; left: 50%; top: calc(86px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); font: 800 13px var(--f-body); color: #fff; background: rgba(14, 20, 48, 0.85); border: 2px solid var(--line); border-radius: var(--r-pill); padding: 5px 14px; white-space: nowrap; pointer-events: none; z-index: 6; }
 .drag-hint[hidden] { display: none; }
+/* with a coach card at the top the drag hint sits at the bottom instead */
+#ui:has(.coach:not(.hidden)) .drag-hint { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+.hud.tut .hud-shot, .hud.tut .hud-period { display: none; }
+/* on touch screens the "you have the ball" label sits at the top: under a coach card it goes */
+html[data-touch="1"] .hud.tut .hud-poss-label, html[data-touch="1"] .hud.practice .hud-poss-label { display: none; }
 .tut-click small { display: block; margin-top: 8px; font: 800 15px var(--f-body); text-transform: none; letter-spacing: 0; color: var(--text2); }
 .tut-click[hidden] { display: none; }
 @keyframes tutClick { from { opacity: 0.75; transform: translate(-50%, -50%) scale(0.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1.03); } }

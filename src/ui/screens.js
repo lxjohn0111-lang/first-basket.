@@ -214,7 +214,7 @@ export class Screens {
       <div class="grid2">
         <div>
           <div class="h-sec">Name &amp; number</div>
-          <input class="field" id="pname" maxlength="16" value="${esc(pr.name)}" placeholder="Your name">
+          ${app.platform.lockedName ? `<div class="field" style="display:flex;align-items:center">${esc(app.platform.lockedName)}</div><div class="small muted" style="margin-top:4px">Your CrazyGames name</div>` : `<input class="field" id="pname" maxlength="16" value="${esc(pr.name)}" placeholder="Your name">`}
           <div class="stepper" style="margin-top:var(--s3)"><button class="btn sm icon" data-act="numDown" aria-label="Lower number">${icon('minus', 18)}</button><span class="pv">#${pr.number}</span><button class="btn sm icon" data-act="numUp" aria-label="Higher number">${icon('plus', 18)}</button></div>
           <div class="h-sec">Look</div>
           <div class="set"><span class="lab">Skin</span>${sw('skin', LOOK_OPTIONS.SKIN, pr.look.skin)}</div>
@@ -234,7 +234,7 @@ export class Screens {
       numUp: () => { pr.number = (pr.number + 1) % 100; this.myPlayer(); },
       done: () => { app.saveProfile(); this.mainMenu(); },
     });
-    el.querySelector('#pname').addEventListener('input', (e) => { pr.name = e.target.value.trim().slice(0, 16) || 'You'; });
+    el.querySelector('#pname')?.addEventListener('input', (e) => { pr.name = e.target.value.trim().slice(0, 16) || 'You'; });
     el.querySelectorAll('[data-arch]').forEach((b) => b.addEventListener('click', () => { pr.archetype = b.dataset.arch; this.sfx('uiClick'); app.saveProfile(); this.myPlayer(); }));
     el.querySelectorAll('[data-sw]').forEach((g) => g.querySelectorAll('.sw').forEach((b) => b.addEventListener('click', () => {
       pr.look[g.dataset.sw] = b.dataset.c;
@@ -251,16 +251,46 @@ export class Screens {
     const card = (act, ic, title, desc, badge = '') => `<button class="card pick choice" data-act="${act}" style="min-height:120px">${icon(ic, 28)}<b>${title} ${badge}</b><span>${desc}</span></button>`;
     this.show(`<div class="panel mid"><div class="h-title">Practice</div>
       <div class="choices" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
+        ${card('tutorial', 'help', 'Tutorial', 'The basics in two minutes: look, dribble, shoot, finish at the rim, pass and steal.')}
         ${card('drills', 'whistle', 'Practice Court', 'Coach Mo walks you through dribbling, crossovers, shooting, layups and dunks, passing, stance, steals and blocks.', r.practiceDone ? '<span class="badge good">done</span>' : '<span class="badge gold pulse">start here</span>')}
         ${card('shootout', 'trophy', 'Shootout', '60 seconds to score as much as you can. The gold hot spot doubles a make.', r.bestShootout ? `<span class="badge cyan">best ${r.bestShootout}</span>` : '')}
         ${card('free', 'ball', 'Free Shootaround', 'No clock. Find your range; a rebounder feeds you.')}
       </div>
       <div class="actions"><button class="btn ghost" data-act="back">Back</button></div></div>`, {
+      tutorial: () => app.startPractice('tutorial'),
       drills: () => app.startPractice('drills'),
       shootout: () => app.startPractice('shootout'),
       free: () => app.startPractice('free'),
       back: () => this.mainMenu(),
     });
+  }
+
+  // after the tutorial: one question, one button, and the first 5v5 game starts
+  ready(session) {
+    const app = this.app;
+    app.input.active = false;
+    app.input.exitLock();
+    app.hud.show(false);
+    this.current = 'ready';
+    const sum = session.cfg.practice.summary();
+    if (sum.completed) app.platform.happytime();
+    const len = FULL_LENGTHS[app.settings.quarterLength] || FULL_LENGTHS.short;
+    const touch = app.input.touchMode;
+    this.show(`<div class="panel ready">
+      <div class="ready-done">${sum.completed ? `${icon('check', 18)} Tutorial complete · ${sum.done}/${sum.total}` : 'Tutorial skipped'}</div>
+      <div class="go-big">Are you ready?</div>
+      <div class="ready-sub">Your first game: 5 against 5, full court.<br>Harbor Hawks v Mesa Comets · ${esc(len.label)}</div>
+      <button class="btn xl primary" data-act="go">${icon('play', 32)} Play 5v5</button>
+      <div class="small muted" style="margin-top:var(--s3)">${touch ? 'Tap II to pause' : 'P pauses · the menu has everything else'}</div>
+    </div>`, { go: () => app.startFirstGame() }, 'screen center dim');
+    this.sfx('uiReward', 0.4);
+  }
+
+  // re-draw the current menu screen (the player's name changed)
+  refresh() {
+    if (this.current === 'menu') this.mainMenu();
+    else if (this.current === 'player') this.myPlayer();
+    else if (this.current === 'career') this.careerHub();
   }
 
   practiceResult(session) {
@@ -316,7 +346,7 @@ export class Screens {
       session.committed = true;
       const r = app.records;
       r.games++; r.points += st.pts;
-      if (outcome === 'win') r.wins++; else if (outcome === 'loss') r.losses++;
+      if (outcome === 'win') { r.wins++; app.platform.happytime(); } else if (outcome === 'loss') r.losses++;
       app.saveRecords();
     }
     const word = { win: 'You win!', loss: 'Defeat', draw: 'Draw' }[outcome];
@@ -479,6 +509,7 @@ export class Screens {
     const sess = app.session;
     const practice = sess && sess.cfg.practice;
     const career = sess && sess.cfg.career;
+    const tut = practice && practice.kind === 'tutorial';
     this.show(`<div class="panel narrow center-t"><div class="h-title">Paused</div>
       <div class="col">
         <button class="btn primary lg block" data-act="resume">${icon('play')} Resume</button>
@@ -486,9 +517,9 @@ export class Screens {
           <button class="btn sm" data-act="settings">${icon('gear', 18)} Settings</button>
           <button class="btn sm" data-act="controls">${icon('help', 18)} Controls</button>
           <button class="btn sm" data-act="style">${icon('brush', 18)} Visual Style</button>
-          ${!practice ? `<button class="btn sm" data-act="stats">${icon('chart', 18)} Box Score</button>` : `<button class="btn sm" data-act="finish">${icon('check', 18)} Finish</button>`}
+          ${!practice ? `<button class="btn sm" data-act="stats">${icon('chart', 18)} Box Score</button>` : `<button class="btn sm" data-act="finish">${icon('check', 18)} ${tut ? 'Skip tutorial' : 'Finish'}</button>`}
         </div>
-        <button class="btn ghost block" data-act="exit">${practice ? 'Exit to Practice' : career ? 'Exit to Career' : 'Exit to Main Menu'}</button>
+        <button class="btn ghost block" data-act="exit">${tut ? 'Exit to Main Menu' : practice ? 'Exit to Practice' : career ? 'Exit to Career' : 'Exit to Main Menu'}</button>
       </div>
       ${!practice ? `<div class="small muted" style="margin-top:var(--s3)">${career ? 'Leaving abandons this game: it will not count, and you can play it again.' : 'Leaving ends this game.'}</div>` : ''}</div>`, {
       resume: () => app.resume(),
@@ -496,8 +527,8 @@ export class Screens {
       settings: () => this.settings(true),
       style: () => this.styleMenu(true),
       stats: () => this.liveStats(),
-      finish: () => { if (practice) { practice.finish(); app.unpause(); } },
-      exit: () => { app.endSession(); if (practice) this.practiceMenu(); else if (career) this.careerHub(); else this.mainMenu(); },
+      finish: () => { if (practice) { if (tut) practice.skipAll(); else practice.finish(); app.unpause(); } },
+      exit: () => { if (tut && !practice.done) practice.end(false); app.endSession(); if (tut) this.mainMenu(); else if (practice) this.practiceMenu(); else if (career) this.careerHub(); else this.mainMenu(); },
     });
   }
 

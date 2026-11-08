@@ -111,21 +111,37 @@ function updateShot(m, p, a, dt) {
     }
     const since = a.t - a.tg;
     const hx = m.side(p.team) * HOOP.X - p.pos.x, hz = HOOP.Z - p.pos.z, hd = Math.hypot(hx, hz) || 1;
-    // an AI shooter keeps squared up to the rim (the human aims with the view)
-    if (a.ai) a.aimYaw = yawOf(hx, hz);
+    // an AI shooter keeps squared up to the rim (the human aims with the view, except
+    // on a layup from under the ring, which turns to it by itself)
+    if (a.ai || a.under) a.aimYaw = yawOf(hx, hz);
     if (!a.jumped) {
       if (a.kind === 'jumper' || a.kind === 'three') {
         const h = p.jumpHeight() * 0.62;
         if (since > 0.05 && a.t >= jumpStartFor(a.spot.c, a.kind, h)) { startJump(p, now, h); a.jumped = true; }
       } else if (a.kind === 'layup') {
-        // a gather step toward the rim, then up off one foot
-        p.desired.set((hx / hd) * 4, 0, (hz / hd) * 4);
-        p.faceYaw = yawOf(hx, hz);
-        if (since > 0.2) {
-          startJump(p, now, p.jumpHeight() * 0.8);
-          const v = Math.min(3, Math.max(0, hd - 0.7) / 0.55);
-          p.vel.set((hx / hd) * v, 0, (hz / hd) * v);
-          a.jumped = true;
+        // a gather step toward the rim, then up off one foot; from right under (or
+        // behind) the ring the step goes out in front of it, so the ball can go up and in
+        const sd = m.side(p.team);
+        if (a.under == null) a.under = hd < 1.45 || sd * p.pos.x > sd * HOOP.X - 0.2;
+        if (a.under) {
+          const fx = sd * (HOOP.X - 1.15) - p.pos.x, fz = clamp(p.pos.z, -0.6, 0.6) - p.pos.z, fd = Math.hypot(fx, fz) || 1;
+          p.desired.set((fx / fd) * Math.min(5, fd * 8), 0, (fz / fd) * Math.min(5, fd * 8));
+          p.faceYaw = yawOf(hx, hz);
+          if (since > 0.2) {
+            startJump(p, now, p.jumpHeight() * 0.8);
+            const v = Math.min(4.5, fd / 0.3);
+            p.vel.set((fx / fd) * v, 0, (fz / fd) * v);
+            a.jumped = true;
+          }
+        } else {
+          p.desired.set((hx / hd) * 4, 0, (hz / hd) * 4);
+          p.faceYaw = yawOf(hx, hz);
+          if (since > 0.2) {
+            startJump(p, now, p.jumpHeight() * 0.8);
+            const v = Math.min(3, Math.max(0, hd - 0.7) / 0.55);
+            p.vel.set((hx / hd) * v, 0, (hz / hd) * v);
+            a.jumped = true;
+          }
         }
       } else if (a.kind === 'dunk') {
         p.faceYaw = yawOf(hx, hz);
@@ -146,13 +162,13 @@ function updateShot(m, p, a, dt) {
     let go = false;
     if (a.kind === 'dunk') go = a.jumped && a.t >= (a.apexT ?? 9) - 0.04;
     else if (p.isHuman && !a.ai) {
-      const minRise = a.kind === 'ft' ? 0.3 : a.kind === 'layup' ? 0.32 : 0.16;
+      const minRise = a.kind === 'ft' ? 0.3 : a.kind === 'layup' ? (a.under ? 0.5 : 0.32) : 0.16;
       if (a.charge >= 1 && a.charging) { a.charging = false; a.relCharge = 1; }
       go = !a.charging && since >= minRise;
       // still holding as the feet come back down: it goes now, late
       if (a.jumped && a.kind !== 'ft' && p.vy < 0 && p.pos.y < 0.1 && since > 0.25) { if (a.charging) { a.charging = false; a.relCharge = a.charge; } go = true; }
     } else {
-      const minRise = a.kind === 'ft' ? 0.3 : a.kind === 'layup' ? 0.32 : 0.16;
+      const minRise = a.kind === 'ft' ? 0.3 : a.kind === 'layup' ? (a.under ? 0.5 : 0.32) : 0.16;
       go = since >= minRise && a.charge >= a.releaseCharge;
       if (a.jumped && a.kind !== 'ft' && p.vy < 0 && p.pos.y < 0.1 && since > 0.25) go = true;
       if (go) a.relCharge = a.charge;
@@ -172,8 +188,9 @@ function releaseShot(m, p, a) {
   const charge = a.relCharge ?? a.charge;
   const dx = m.side(p.team) * HOOP.X - b.pos.x, dz = HOOP.Z - b.pos.z;
   if (a.kind === 'dunk' && Math.hypot(dx, dz) < 0.5 && b.pos.y > HOOP.Y + 0.08) {
-    // slam: straight down through the ring
-    b.release(dx * 4, -5.5, dz * 4, 0, 0, 0);
+    // slam: straight down through the middle of the ring
+    const tf = Math.max(0.05, (b.pos.y - HOOP.Y + 0.12) / 5.5);
+    b.release(dx / tf, -5.5, dz / tf, 0, 0, 0);
     a.gradeInfo = { tier: 'perfect', label: 'DUNK' };
   } else if (a.kind === 'dunk') {
     // couldn't get over the rim (a body in the way): it becomes a soft finish

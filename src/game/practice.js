@@ -26,7 +26,7 @@ function practiceTeams(profile, withDummy) {
 }
 
 // ---------------------------------------------------------------- base
-class PracticeBase {
+export class PracticeBase {
   constructor(app) { this.app = app; this.t = 0; this.made = 0; this.att = 0; this.points = 0; this.done = false; }
   matchConfig(profile) { return { seed: 77, rules: false, difficulty: this.app.settings.difficulty, teams: practiceTeams(profile, true) }; }
   attach(s) {

@@ -10,19 +10,21 @@ const el = (tag, cls, parent, html) => {
 };
 
 export class CoachCard {
-  constructor(parent, total, onSkip) {
+  constructor(parent, total, onSkip, o = {}) {
     this.root = el('div', 'coach hidden', parent);
+    this.skipWord = o.skipWord || 'Skip drill';
+    this.showStars = o.stars !== false;
     const main = el('div', 'coach-main', this.root);
     const txt = el('div', 'coach-txt', main);
     this.sayEl = el('div', 'coach-say', txt);
     this.hintEl = el('div', 'coach-hint', txt);
-    this.skip = el('button', 'coach-skip', main, 'Skip drill');
+    this.skip = el('button', 'coach-skip', main, this.skipWord);
     this.skip.addEventListener('click', (e) => { e.preventDefault(); onSkip(); });
     this.skip.addEventListener('pointerdown', (e) => e.stopPropagation());
     const foot = el('div', 'coach-foot', this.root);
     this.dots = el('span', 'coach-dots', foot);
     for (let i = 0; i < total; i++) el('i', '', this.dots);
-    this.starsEl = el('span', 'coach-stars', foot, '★ 0');
+    this.starsEl = el('span', 'coach-stars', foot, this.showStars ? '★ 0' : '');
     this.bar = el('div', 'coach-bar', this.root);
     this.barFill = el('i', '', this.bar);
     // pulsing arrow at the screen edge towards an objective that is out of view
@@ -57,8 +59,10 @@ export class CoachCard {
     if (s.index !== L.index || s.doneCount !== L.doneCount) {
       [...this.dots.children].forEach((d, i) => { d.className = i < s.doneCount ? 'done' : i === s.index ? 'now' : ''; });
     }
-    if (s.stars !== L.stars) this.starsEl.textContent = `★ ${s.stars}`;
-    if (s.keyboard !== L.keyboard) this.skip.textContent = s.keyboard ? 'Skip drill (Enter)' : 'Skip';
+    if (s.stars !== L.stars && this.showStars) this.starsEl.textContent = `★ ${s.stars}`;
+    if (s.step !== L.step) { this.starsEl.textContent = s.step || ''; }
+    if (s.keyboard !== L.keyboard) this.skip.textContent = s.keyboard ? `${this.skipWord} (Enter)` : this.skipWord;
+    this.root.classList.toggle('ok', !!s.ok);
     this.barFill.style.width = `${Math.round(Math.max(0, Math.min(1, s.frac)) * 100)}%`;
     this.last = { ...s };
   }

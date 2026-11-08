@@ -49,7 +49,7 @@ export class CareerScreens {
       <div class="grid2">
         <div>
           <div class="h-sec">Name &amp; number</div>
-          <input class="field" id="cname" maxlength="16" value="${esc(d.name)}" placeholder="Your name">
+          ${app.platform.lockedName ? `<div class="field" style="display:flex;align-items:center">${esc(app.platform.lockedName)}</div><div class="small muted" style="margin-top:4px">Your CrazyGames name</div>` : `<input class="field" id="cname" maxlength="16" value="${esc(d.name)}" placeholder="Your name">`}
           <div class="stepper" style="margin-top:var(--s3)"><button class="btn sm icon" data-act="numDown" aria-label="Lower number">${icon('minus', 18)}</button><span class="pv">#${d.number}</span><button class="btn sm icon" data-act="numUp" aria-label="Higher number">${icon('plus', 18)}</button></div>
           <div class="h-sec">Look</div>
           <div class="set"><span class="lab">Skin</span>${sw('skin', LOOK_OPTIONS.SKIN, d.look.skin)}</div>
@@ -73,6 +73,7 @@ export class CareerScreens {
       numDown: () => { d.number = (d.number + 99) % 100; this.create(); },
       numUp: () => { d.number = (d.number + 1) % 100; this.create(); },
       start: () => {
+        if (app.platform.lockedName) d.name = app.platform.lockedName;
         app.career = newCareer({ player: d, clubId: d.clubId, difficulty: d.difficulty, quarterLength: d.quarterLength });
         this.draft = null;
         app.saveCareer();
@@ -82,7 +83,7 @@ export class CareerScreens {
       },
       back: () => { this.draft = null; s.mainMenu(); },
     });
-    el.querySelector('#cname').addEventListener('input', (e) => { d.name = e.target.value.trim().slice(0, 16) || 'Rookie'; });
+    el.querySelector('#cname')?.addEventListener('input', (e) => { d.name = e.target.value.trim().slice(0, 16) || 'Rookie'; });
     el.querySelectorAll('[data-arch]').forEach((b) => b.addEventListener('click', () => { d.archetype = b.dataset.arch; s.sfx('uiClick'); this.create(); }));
     el.querySelectorAll('[data-club]').forEach((b) => b.addEventListener('click', () => { d.clubId = b.dataset.club; s.sfx('uiClick'); this.create(); }));
     el.querySelectorAll('[data-sw]').forEach((g) => g.querySelectorAll('.sw').forEach((b) => b.addEventListener('click', () => {
@@ -274,7 +275,7 @@ export class CareerScreens {
       app.saveCareer();
       const r = app.records;
       r.games++; r.points += m.stats.of(h).pts;
-      if (session.careerSum && session.careerSum.won) r.wins++; else r.losses++;
+      if (session.careerSum && session.careerSum.won) { r.wins++; app.platform.happytime(); } else r.losses++;
       app.saveRecords();
     }
     this.report(session.careerSum, session);

@@ -15,6 +15,8 @@ import { resolveKits } from './render/palette.js';
 import { GAME_LENGTHS, FULL_LENGTHS } from './sim/constants.js';
 import { makePractice } from './game/practice.js';
 import { validCareer } from './game/career.js';
+import { Tutorial, tutorialSeen } from './game/tutorial.js';
+import { platform } from './platform/crazygames.js';
 
 const PROFILE_KEY = 'courtside.profile', RECORDS_KEY = 'courtside.records', CAREER_KEY = 'courtside.career';
 
@@ -25,11 +27,13 @@ class App {
     document.head.appendChild(st);
     this.params = new URLSearchParams(location.search);
     this.coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    // a phone: a touch screen with a small short side
+    this.phone = this.coarse && Math.min(screen.width || innerWidth, screen.height || innerHeight) < 540;
     this.settings = loadSettings(this.coarse);
     if (this.coarse && !hasSavedSettings()) this.settings.quality = 'medium';
     this.canvas = document.getElementById('game');
     this.uiRoot = document.getElementById('ui');
-    this.view = new SceneView(this.canvas, { quality: this.settings.quality, preserve: this.params.has('preserve') });
+    this.view = new SceneView(this.canvas, { quality: this.settings.quality, preserve: this.params.has('preserve'), lite: this.coarse || this.params.has('lite') });
     this.view.setQuality(this.settings.quality);
     this.style = this.params.get('style') || loadStyle();
     this.view.setStyle(this.style);
@@ -49,6 +53,10 @@ class App {
     this.profile = this.loadJSON(PROFILE_KEY, defaultPlayer());
     this.records = this.loadJSON(RECORDS_KEY, { wins: 0, losses: 0, games: 0, bestShootout: 0, practiceDone: false, points: 0 });
     this.career = this.loadCareer();
+    // on CrazyGames the player's name is the account's username (or the guest name)
+    this.platform = platform;
+    this.syncPlayerName();
+    platform.onName(() => { this.syncPlayerName(); if (!this.session && this.screens && ['menu', 'player', 'career'].includes(this.screens.current)) this.screens.refresh(); });
     this.screens = new Screens(this);
     this.session = null;
     this.menuSession = null;
@@ -76,14 +84,27 @@ class App {
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('contextmenu', (e) => { if (!(e.target.closest && e.target.closest('input'))) e.preventDefault(); });
 
+    // the platform's mute setting silences the game
+    platform.onMute((mu) => this.audio.setPlatformMute(mu));
+
     document.getElementById('boot')?.remove();
-    this.startMenuBackground();
-    this.screens.mainMenu();
+    const auto = this.params.get('auto');
+    // first visit: the tutorial instead of the menu, then straight into a 5v5 game
+    // (automated test browsers opt in with ?tutorial)
+    this.firstRun = !auto && !tutorialSeen() && (!navigator.webdriver || this.params.has('tutorial'));
+    if (this.firstRun) this.startPractice('tutorial', { first: true });
+    else { this.startMenuBackground(); this.screens.mainMenu(); }
     requestAnimationFrame((t) => this.loop(t));
     window.__cs = this;
     this.debugStep = (n) => { const s = this.session || this.menuSession; for (let i = 0; i < n; i++) { s.match.step(1 / 120); if (s.cfg.practice) s.cfg.practice.step(s, 1 / 120); } };
-    const auto = this.params.get('auto');
     if (auto) setTimeout(() => this.autostart(auto), 50);
+  }
+
+  syncPlayerName() {
+    const name = platform.lockedName;
+    if (!name) return;
+    if (this.profile.name !== name) { this.profile.name = name; this.saveJSON(PROFILE_KEY, this.profile); }
+    if (this.career && this.career.player.name !== name) { this.career.player.name = name; this.saveCareer(); }
   }
 
   loadJSON(key, def) {
@@ -107,6 +128,7 @@ class App {
     if (kind === 'quick' || kind === 'full') this.startGame({ format: 'full', size: num('size'), home: q.get('home') || 'harbor', away: q.get('away') || 'mesa', venue: q.get('venue') || 'arena', live: q.has('live'), quarter: num('quarter') });
     else if (kind === 'half' || kind === '3v3' || kind === '1v1') this.startGame({ format: kind === '1v1' ? '1v1' : '3v3', home: q.get('home') || 'harbor', away: q.get('away') || 'mesa', venue: q.get('venue') || (kind === '1v1' ? 'gym' : 'arena'), live: q.has('live'), clock: num('clock'), target: num('target') });
     else if (kind.startsWith('practice')) this.startPractice(kind.split(':')[1] || 'drills', { live: q.has('live') });
+    else if (kind === 'tutorial') this.startPractice('tutorial', { live: q.has('live') });
     else if (kind === 'career' && this.career) this.screens.careerHub();
   }
 
@@ -115,10 +137,13 @@ class App {
     requestAnimationFrame((tt) => this.loop(tt));
     let dt = (t - this.last) / 1000;
     this.adaptResolution(dt);
-    if (this.fpsCap) {
+    // on touch devices the menus (a game going on behind them) are drawn at 30 fps to
+    // save battery; play itself runs at the screen's rate
+    const cap = this.fpsCap || (this.coarse && !this.session ? 30 : 0);
+    if (cap) {
       this.frameAcc += dt;
       this.last = t;
-      if (this.frameAcc < 1 / this.fpsCap) return;
+      if (this.frameAcc < 1 / cap - 0.002) return;
       dt = this.frameAcc;
       this.frameAcc = 0;
     } else this.last = t;
@@ -129,6 +154,8 @@ class App {
     const playing = !!(this.session && this.session.human && !this.paused && !this.session.ended);
     this.touch.setVisible(this.input.touchMode && playing);
     if (this.touch.visible) this.touch.update(this.session);
+    // the platform hears when real play starts and stops (any pause is a stop)
+    platform.setGameplay(!!this.session && !this.session.ended && !this.paused && !document.hidden);
     if (this.onFrame) this.onFrame(dt);
   }
 
@@ -190,7 +217,8 @@ class App {
   }
 
   tryFullscreen() {
-    if (!this.input.touchMode || document.fullscreenElement || this.params.has('nofs')) return;
+    // on CrazyGames the platform has its own fullscreen button
+    if (!this.input.touchMode || document.fullscreenElement || this.params.has('nofs') || platform.active) return;
     const el = document.documentElement;
     try {
       const r = el.requestFullscreen && el.requestFullscreen({ navigationUI: 'hide' });
@@ -205,9 +233,9 @@ class App {
     const home = TEAMS[3], away = TEAMS[6];
     const kits = resolveKits(home, away);
     kits[0].word = home.short; kits[1].word = away.short;
-    // a full-court 5v5 game that never ends
+    // a full-court 5v5 game that never ends (in the lighter gym on phones)
     const cfg = {
-      mode: 'menu', venue: 'arena', venueOpts: { homeName: home.name, awayName: away.name },
+      mode: 'menu', venue: this.phone ? 'gym' : 'arena', venueOpts: { homeName: home.name, awayName: away.name },
       colours: { kits, human: this.profile.look, court: home.colors[0] },
       match: { court: 'full', seed: 99, quarter: 100000, difficulty: 'pro', teams: [teamConfig(home, 5), teamConfig(away, 5)] },
     };
@@ -252,6 +280,8 @@ class App {
     this.session = new GameSession(this, cfg);
     this.hud.show(true);
     this.hud.root.classList.toggle('practice', !!cfg.practice);
+    // the tutorial: only its coach card at the top (no scoreboard or clocks)
+    this.hud.root.classList.toggle('tut', !!(cfg.practice && cfg.practice.kind === 'tutorial'));
     this.session.start();
     this.input.active = true;
     if (cfg.live) {
@@ -265,14 +295,23 @@ class App {
     return this.session;
   }
 
-  endSession() {
+  // o.next: another game starts right away (no menu background in between)
+  endSession(o = {}) {
     if (this.session) this.session.dispose();
     this.session = null;
     this.paused = false;
     this.input.active = false;
-    this.input.exitLock();
+    if (!o.next) this.input.exitLock();
     this.hud.show(false);
-    this.startMenuBackground();
+    if (!o.next) this.startMenuBackground();
+  }
+
+  // the first game after the tutorial: a 5v5 full-court game, started from the button
+  // press (so the mouse is captured right away on a computer)
+  startFirstGame() {
+    this.endSession({ next: true });
+    this.startGame({ format: 'full', size: 5, home: 'harbor', away: 'mesa', venue: 'arena' });
+    this.resume();
   }
 
   startGame(o) {
@@ -291,7 +330,8 @@ class App {
   }
 
   startPractice(kind, o = {}) {
-    const practice = makePractice(kind, this);
+    const practice = kind === 'tutorial' ? new Tutorial(this) : makePractice(kind, this);
+    if (o.first) practice.first = true;
     const home = teamById('harbor'), away = teamById('summit');
     const kits = resolveKits(home, away);
     kits[0].word = 'PRACTICE';
@@ -300,7 +340,7 @@ class App {
       title: practice.title,
       colours: { kits, human: this.profile.look, court: '#3a86ff' },
       match: practice.matchConfig(this.profile), practice,
-      onEnd: (s) => this.screens.practiceResult(s),
+      onEnd: (s) => (kind === 'tutorial' ? this.screens.ready(s) : this.screens.practiceResult(s)),
     });
   }
 
@@ -402,7 +442,11 @@ class App {
   }
 }
 
-function boot() {
+async function boot() {
+  // the CrazyGames SDK (when its script is on the page) is ready before anything is
+  // loaded, so the career and settings are read from the right place
+  await platform.init();
+  platform.loadingStart();
   try {
     new App();
   } catch (e) {
@@ -410,5 +454,6 @@ function boot() {
     const b = document.getElementById('boot');
     if (b) b.textContent = 'Courtside could not start: ' + e.message + ' (a browser with WebGL2 is required).';
   }
+  platform.loadingStop();
 }
 if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', boot); else boot();

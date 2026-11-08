@@ -28,6 +28,7 @@ export class SceneView {
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
     this.quality = opts.quality || 'high';
+    this.lite = !!opts.lite; // phones and tablets: a thinner crowd, a cheaper pixel ratio
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!opts.preserve });
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     renderer.shadowMap.enabled = true;
@@ -103,7 +104,9 @@ export class SceneView {
   setQuality(q) {
     this.quality = q;
     const dpr = window.devicePixelRatio || 1;
-    const base = q === 'low' ? Math.min(1, dpr) * 0.75 : q === 'medium' ? Math.min(1.25, dpr) : Math.min(2, dpr);
+    let base = q === 'low' ? Math.min(1, dpr) * 0.75 : q === 'medium' ? Math.min(1.25, dpr) : Math.min(2, dpr);
+    // phones: never more than 1.5 device pixels per CSS pixel (sharp enough on a small screen)
+    if (this.lite) base = Math.min(base, 1.5);
     this.renderer.setPixelRatio(base * (this.resScale || 1));
     const size = q === 'high' ? 2048 : 1024;
     if (this.sun.shadow.mapSize.x !== size) {
@@ -165,7 +168,7 @@ export class SceneView {
     this.venueKey = key;
     for (const obj of this.venueObjs) { this.scene.remove(obj); obj.geometry.dispose(); }
     this.venueObjs = [];
-    const v = buildVenue(type, { atlas: this.atlas, quality: this.quality, homeName: o.homeName || 'HOME', awayName: o.awayName || 'AWAY', seed: o.seed || 7 });
+    const v = buildVenue(type, { atlas: this.atlas, quality: this.quality, homeName: o.homeName || 'HOME', awayName: o.awayName || 'AWAY', seed: o.seed || 7, crowd: this.lite ? 0.6 : 1 });
     this.venue = v;
     const solid = new THREE.Mesh(v.solid, this.staticMat);
     solid.receiveShadow = true;

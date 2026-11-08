@@ -9,7 +9,7 @@
 let backend = null;
 let kind = 'localStorage';
 
-export const SAVE_KEYS = ['courtside.settings.v1', 'courtside.style', 'courtside.profile', 'courtside.records'];
+export const SAVE_KEYS = ['courtside.career', 'courtside.profile', 'courtside.records', 'courtside.settings.v1', 'courtside.style', 'courtside.tutorial'];
 
 const store = () => backend || globalThis.localStorage;
 

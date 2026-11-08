@@ -719,7 +719,7 @@ export class Match {
         s.blocked = true;
         s.done = true;
         const fx = Math.sin(q.yaw), fz = Math.cos(q.yaw);
-        b.vel.set(fx * 3.2 - b.vel.x * 0.15 + this.rng.gauss() * 0.7, -1.2 - Math.random() * 0.5, fz * 3.2 - b.vel.z * 0.15 + this.rng.gauss() * 0.7);
+        b.vel.set(fx * 3.2 - b.vel.x * 0.15 + this.rng.gauss() * 0.7, -1.2 - this.rng.next() * 0.5, fz * 3.2 - b.vel.z * 0.15 + this.rng.gauss() * 0.7);
         b.lastTouch = { player: q, team: q.team, t: now };
         this.stats.add(q, 'blk');
         this.events.emit('block', { player: q, victim: s.shooter, t: now });
@@ -819,6 +819,8 @@ export class Match {
     this.events.emit('basket', { team, value, player: s.shooter, assist, kind: s.kind, goaltend, grade: s.grade, t: now, pos: b.pos.clone(), andOne: !!s.foul });
     if (s.shooter) s.shooter.celebrateUntil = now + 1.4;
     b.shot = null;
+    // practice (no rules): play just goes on, the rebounder fetches the ball
+    if (!this.rules) return;
     // and one
     if (s.foul) { this.setPhase('scored'); this.next = { type: 'ft', shooter: s.shooter, n: 1 }; return; }
     this.setPhase('scored');
