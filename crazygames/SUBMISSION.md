@@ -118,6 +118,17 @@ In `src/platform/crazygames.js`:
   - `node tests/tutorial.mjs` plays the whole first-run tutorial with the real controls. It also checks Skip, the "Are you ready?" button starting a 5v5 game, a second visit opening the menu, and a phone.
 - **In the portal:** the real SDK could not be reached from the build environment, so do a final check in the portal's preview/QA tool. Check saving after a game and reloading, the tutorial on a first visit, and a phone in landscape.
 
+## If the game stays on "Loading"
+
+The loading screen says what is going on:
+
+- **"Connecting to CrazyGames…"** The SDK is still getting ready. On CrazyGames its init talks to the page around the game, loads the player's account and cloud save, and loads the ads library. The game waits up to 30 seconds. If the SDK still isn't ready by then, the game starts without it and connects to it as soon as it is ready, so it never stays on the loading screen.
+- **"game.js did not load"** Only `index.html` reached the server. Upload `courtside-crazygames.zip` (or `index.html` and `game.js` together, at the same level).
+- **"Courtside could not start: …"** The error that stopped it. The browser console (F12) has the details, in lines starting with `[Courtside]`.
+- **Opening the uploaded files' own address directly** (not inside a CrazyGames page): the SDK first looks for the CrazyGames page for 7 seconds. It then switches itself off and the game starts without it. That is expected. The portal's SDK checks only see the SDK when the game runs inside the CrazyGames page (Preview / QA tool).
+
+`node tests/crazygames-real.mjs` checks the build with the real SDK (it needs network access to sdk.crazygames.com). A small page plays the part of the CrazyGames page, and in its "crazygames" environment the game loads in about a second and saves through the data module. On another host it loads in about 8 seconds without the SDK.
+
 ## Rebuilding
 
 ```sh

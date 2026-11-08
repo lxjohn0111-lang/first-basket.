@@ -35,6 +35,15 @@ const html = `<!doctype html>
 <canvas id="game"></canvas>
 <div id="ui"></div>
 <div id="boot">Loading&hellip;</div>
+<script>
+  // a safety net: if game.js never ran (missing from the upload, or blocked), say so
+  // instead of showing "Loading" for ever
+  setTimeout(function () {
+    if (window.__csBooting) return;
+    var b = document.getElementById('boot');
+    if (b) b.innerHTML = 'game.js did not load<br><small style="font-size:14px;letter-spacing:0;text-transform:none">Upload index.html and game.js together (courtside-crazygames.zip).</small>';
+  }, 12000);
+</script>
 <script src="game.js"></script>
 </body>
 </html>
@@ -57,9 +66,10 @@ function zip(files) {
     local.writeUInt32LE(comp.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(nameBuf.length, 26); local.writeUInt16LE(0, 28);
     parts.push(local, nameBuf, comp);
     const cen = Buffer.alloc(46);
-    cen.writeUInt32LE(0x02014b50, 0); cen.writeUInt16LE(20, 4); cen.writeUInt16LE(20, 6); cen.writeUInt16LE(0, 8); cen.writeUInt16LE(8, 10);
+    cen.writeUInt32LE(0x02014b50, 0); cen.writeUInt16LE((3 << 8) | 20, 4); cen.writeUInt16LE(20, 6); cen.writeUInt16LE(0, 8); cen.writeUInt16LE(8, 10);
     cen.writeUInt16LE(time, 12); cen.writeUInt16LE(date, 14); cen.writeUInt32LE(crc, 16); cen.writeUInt32LE(comp.length, 20); cen.writeUInt32LE(data.length, 24);
-    cen.writeUInt16LE(nameBuf.length, 28); cen.writeUInt32LE(0, 30); cen.writeUInt16LE(0, 34); cen.writeUInt16LE(0, 36); cen.writeUInt32LE(0, 38); cen.writeUInt32LE(offset, 42);
+    // made by Unix (3) with rw-r--r-- permissions, so every unzipper serves the files
+    cen.writeUInt16LE(nameBuf.length, 28); cen.writeUInt32LE(0, 30); cen.writeUInt16LE(0, 34); cen.writeUInt16LE(0, 36); cen.writeUInt32LE(((0o100644 << 16) >>> 0), 38); cen.writeUInt32LE(offset, 42);
     central.push(cen, nameBuf);
     offset += 30 + nameBuf.length + comp.length;
   }

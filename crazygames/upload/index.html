@@ -16,6 +16,15 @@
 <canvas id="game"></canvas>
 <div id="ui"></div>
 <div id="boot">Loading&hellip;</div>
+<script>
+  // a safety net: if game.js never ran (missing from the upload, or blocked), say so
+  // instead of showing "Loading" for ever
+  setTimeout(function () {
+    if (window.__csBooting) return;
+    var b = document.getElementById('boot');
+    if (b) b.innerHTML = 'game.js did not load<br><small style="font-size:14px;letter-spacing:0;text-transform:none">Upload index.html and game.js together (courtside-crazygames.zip).</small>';
+  }, 12000);
+</script>
 <script src="game.js"></script>
 </body>
 </html>

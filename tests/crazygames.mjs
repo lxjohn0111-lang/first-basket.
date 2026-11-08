@@ -4,8 +4,10 @@
 // reload; earlier localStorage saves are copied in once; gameplayStart / gameplayStop
 // follow real play (pauses count as stops); happytime when a game is won; the platform
 // mute silences the game; the player's name is the CrazyGames username (or the guest
-// name); no ads are requested; and on other domains ("disabled") or without the data
-// module the game falls back to localStorage.
+// name); no ads are requested; a slow SDK never leaves the game loading for ever (it starts
+// without it and connects it when it is ready); a missing game.js is explained on the
+// loading screen; and on other domains ("disabled") or without the data module the game
+// falls back to localStorage.
 // Needs `npm run crazygames` first and `node server.js` running. Usage: node tests/crazygames.mjs
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -126,6 +128,46 @@ const calls = (page) => page.evaluate(() => window.__cg.calls.slice());
   await page.waitForFunction(() => window.__cs.screens.current === 'ready', null, { timeout: 120000 });
   const saved = await page.evaluate(() => localStorage.getItem('cgcloud:courtside.tutorial'));
   check('the tutorial flag is saved through the data module', saved === 'skipped', saved);
+  await page.close();
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- a slow SDK, a missing game.js
+{
+  // the SDK takes longer than the game waits: the game starts without it and connects it later
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await ctx.addInitScript(() => { localStorage.setItem('courtside.tutorial', 'done'); });
+  const page = await ctx.newPage();
+  page.setDefaultTimeout(180000);
+  page.on('pageerror', (e) => { errors.push(e.message); console.log('PAGEERROR', e.message); });
+  await page.route('https://sdk.crazygames.com/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: fake }));
+  await page.goto(`${BASE}?fps=4&cginitdelay=34000`);
+  await page.waitForTimeout(4000);
+  const waiting = await page.evaluate(() => document.getElementById('boot') && document.getElementById('boot').textContent);
+  check('while the SDK gets ready the loading screen says so', /Connecting to CrazyGames/.test(waiting || ''), waiting);
+  await page.waitForFunction(() => window.__cs, null, { timeout: 60000 });
+  const early = await page.evaluate(() => ({ env: window.__cs.platform.env, saves: window.__cs.platform.saves, screen: window.__cs.screens.current }));
+  check('a slow SDK: the game starts without it after the wait (no endless loading)', early.env === 'disabled' && early.screen === 'menu', JSON.stringify(early));
+  await page.waitForFunction(() => window.__cs.platform.sdk, null, { timeout: 30000 });
+  await page.waitForTimeout(300);
+  const late = await page.evaluate(() => ({ env: window.__cs.platform.env, saves: window.__cs.platform.saves, calls: window.__cg.calls.filter((x) => /loading|gameplay/.test(x)) }));
+  check('when the SDK is ready later it is connected (loading events, saves to the data module)', late.env === 'crazygames' && late.saves === 'crazygames' && late.calls.includes('loadingStart') && late.calls.includes('loadingStop'), JSON.stringify(late));
+  await page.evaluate(() => { const a = window.__cs; a.settings.fov = 103; a.applySettings(); a.commitSettings(); });
+  const cloud = await page.evaluate(() => !!localStorage.getItem('cgcloud:courtside.settings.v1') && !!localStorage.getItem('cgcloud:courtside.tutorial'));
+  check('after connecting, saves go through the data module (earlier ones copied in)', cloud);
+  await page.close();
+  await ctx.close();
+}
+{
+  // game.js missing from the upload: the page says so instead of loading for ever
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const page = await ctx.newPage();
+  await page.route('https://sdk.crazygames.com/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: fake }));
+  await page.route('**/crazygames/upload/game.js', (r) => r.fulfill({ status: 404, body: 'not found' }));
+  await page.goto(`${BASE}?fps=4`);
+  await page.waitForTimeout(13500);
+  const txt = await page.evaluate(() => document.getElementById('boot') && document.getElementById('boot').textContent);
+  check('without game.js the loading screen explains what is missing', /game\.js did not load/.test(txt || ''), txt);
   await page.close();
   await ctx.close();
 }

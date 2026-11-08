@@ -4,7 +4,7 @@
 // window.__cg.calls.
 // Query options: ?cgenv=local|crazygames|disabled (default crazygames),
 // ?cgdata=off (data module not enabled: its calls throw), ?cguser=<name> (logged in as
-// that CrazyGames user; a guest otherwise), ?muteAudio=true.
+// that CrazyGames user; a guest otherwise), ?muteAudio=true, ?cginitdelay=<ms> (a slow init).
 // window.__cg.login(name) / logout() / setMute(m) change things during the session.
 (() => {
   const q = new URLSearchParams(location.search);
@@ -32,7 +32,7 @@
   };
   const SDK = {
     environment: 'uninitialized',
-    async init() { rec('init'); await new Promise((r) => setTimeout(r, 30)); SDK.environment = env; },
+    async init() { rec('init'); await new Promise((r) => setTimeout(r, Number(q.get('cginitdelay') || 30))); SDK.environment = env; },
     data: guard(data),
     user: guard({
       isUserAccountAvailable: true,

@@ -443,17 +443,25 @@ class App {
 }
 
 async function boot() {
+  window.__csBooting = true; // index.html's safety net: game.js did run
+  const say = (t) => { const b = document.getElementById('boot'); if (b) b.textContent = t; };
+  // anything that goes wrong before the game is up is shown on the loading screen
+  const onError = (e) => say('Courtside could not start: ' + ((e && (e.message || (e.reason && e.reason.message) || e.reason)) || 'unknown error'));
+  window.addEventListener('error', onError);
+  window.addEventListener('unhandledrejection', onError);
   // the CrazyGames SDK (when its script is on the page) is ready before anything is
   // loaded, so the career and settings are read from the right place
-  await platform.init();
+  try { await platform.init(say); } catch (e) { console.warn('[Courtside] platform init failed:', e); }
   platform.loadingStart();
+  say('Loading\u2026');
   try {
     new App();
   } catch (e) {
     console.error(e);
-    const b = document.getElementById('boot');
-    if (b) b.textContent = 'Courtside could not start: ' + e.message + ' (a browser with WebGL2 is required).';
+    say('Courtside could not start: ' + e.message + ' (a browser with WebGL2 is required).');
   }
+  window.removeEventListener('error', onError);
+  window.removeEventListener('unhandledrejection', onError);
   platform.loadingStop();
 }
 if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', boot); else boot();
