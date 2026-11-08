@@ -4,8 +4,8 @@ Everything needed to submit Courtside to CrazyGames (developer.crazygames.com).
 
 | Path | What it is |
 | --- | --- |
-| `courtside-crazygames.zip` | **Upload this.** `index.html` and `game.js` at the zip's root. |
-| `upload/` | The same two files unzipped, if you prefer to upload a folder or test locally. |
+| `courtside-crazygames.zip` | **Upload this.** One file at the zip's root: `index.html`, the whole game (the SDK script tag and the game inlined), 0.9 MB. |
+| `upload/` | The same `index.html` unzipped, if you prefer to upload a folder or test locally. |
 | `video/courtside-landscape.mp4` | Gameplay video, landscape 1920x1080, 15.6 s, H.264, no audio. |
 | `video/courtside-portrait.mp4` | Gameplay video, portrait 1080x1920, 16 s, H.264, no audio. |
 
@@ -15,7 +15,7 @@ The videos are recorded from the game itself: a 5v5 full-court game seen through
 
 ## Upload steps
 
-1. Developer portal → **Submit game** → **HTML5**. Upload `courtside-crazygames.zip` (or the files in `upload/`). The entry file is `index.html`.
+1. Developer portal → **Submit game** → **HTML5**. Upload `courtside-crazygames.zip` (or `upload/index.html`). The entry file is `index.html`. The game is a single file, so there is no second file the host could fail to serve.
 2. **Progress Save: turn it ON.** The game saves its progress through the SDK's data module (see below). With the toggle off the data module is disabled; the game then falls back to the browser's localStorage, so nothing breaks, but saves won't follow logged-in players across devices.
 3. SDK: HTML5 SDK **v3** (already loaded by `index.html`). No ads are requested by this build.
 4. Fill in the fields below, add the videos (and your covers), then check the game in the portal's preview/QA tool before submitting.
@@ -123,8 +123,7 @@ In `src/platform/crazygames.js`:
 The loading screen says what is going on:
 
 - **"Connecting to CrazyGames…"** The SDK is still getting ready. On CrazyGames its init talks to the page around the game, loads the player's account and cloud save, and loads the ads library. The game waits up to 30 seconds. If the SDK still isn't ready by then, the game starts without it and connects to it as soon as it is ready, so it never stays on the loading screen.
-- **"game.js did not load"** Only `index.html` reached the server. Upload `courtside-crazygames.zip` (or `index.html` and `game.js` together, at the same level).
-- **"Courtside could not start: …"** The error that stopped it. The browser console (F12) has the details, in lines starting with `[Courtside]`.
+- **"Courtside did not start" / "Courtside could not start: …"** The first error the browser reported is shown underneath. The browser console (F12) has the details, in lines starting with `[Courtside]`. (An earlier build loaded the game from a second file, `game.js`, which the CrazyGames host did not run; the game is now inlined in `index.html`.)
 - **Opening the uploaded files' own address directly** (not inside a CrazyGames page): the SDK first looks for the CrazyGames page for 7 seconds. It then switches itself off and the game starts without it. That is expected. The portal's SDK checks only see the SDK when the game runs inside the CrazyGames page (Preview / QA tool).
 
 `node tests/crazygames-real.mjs` checks the build with the real SDK (it needs network access to sdk.crazygames.com). A small page plays the part of the CrazyGames page, and in its "crazygames" environment the game loads in about a second and saves through the data module. On another host it loads in about 8 seconds without the SDK.

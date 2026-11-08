@@ -1,7 +1,7 @@
 // Builds the CrazyGames upload (adapted from First Touch's tool):
-//   crazygames/upload/index.html   the game page with the CrazyGames SDK v3 script
-//   crazygames/upload/game.js      the bundled, minified game (same as dist/game.js)
-//   crazygames/courtside-crazygames.zip   both files at the zip's root, ready to upload
+//   crazygames/upload/index.html   the whole game in one file: the CrazyGames SDK v3
+//                                  script, then the bundled game (dist/game.js) inlined
+//   crazygames/courtside-crazygames.zip   index.html at the zip's root, ready to upload
 // Usage: npm run crazygames   (rebuilds dist/game.js first)
 // The gameplay videos in crazygames/video are made separately: npm run video
 import { execFileSync } from 'node:child_process';
@@ -15,8 +15,9 @@ const out = path.join(root, 'crazygames');
 const up = path.join(out, 'upload');
 
 execFileSync(process.execPath, [path.join(root, 'tools/build.mjs')], { stdio: 'inherit' });
-fs.mkdirSync(up, { recursive: true });
-
+// One file: the game is inlined into index.html, so the upload can't lose it (a relative
+// path, a content type or a missing second file on the host can't stop it loading).
+const game = fs.readFileSync(path.join(root, 'dist/game.js'), 'utf8').replace(/<\/script/gi, '<\\/script');
 const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -26,8 +27,26 @@ const html = `<!doctype html>
 <style>
   html, body { margin: 0; height: 100%; background: #0e1430; overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-  #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font: 900 26px/1.3 "Arial Rounded MT Bold", "Arial Black", system-ui, sans-serif; letter-spacing: 1px; text-transform: uppercase; color: #ffc61a; text-shadow: 0 4px 0 #070b1d; }
+  #boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 16px; font: 900 26px/1.3 "Arial Rounded MT Bold", "Arial Black", system-ui, sans-serif; letter-spacing: 1px; text-transform: uppercase; color: #ffc61a; text-shadow: 0 4px 0 #070b1d; }
+  #boot small { display: block; margin-top: 10px; font: 700 14px/1.4 system-ui, sans-serif; letter-spacing: 0; text-transform: none; color: #c9d1ff; text-shadow: none; max-width: 760px; }
 </style>
+<script>
+  // a safety net: anything that stops the game from starting is shown on the loading
+  // screen (with the first error the browser reported) instead of "Loading" for ever
+  (function () {
+    var errs = [];
+    window.addEventListener('error', function (e) {
+      var t = e && e.target;
+      if (t && t !== window && (t.src || t.href)) errs.push('Could not load ' + (t.src || t.href));
+      else errs.push((e && e.message ? e.message : 'Script error') + (e && e.lineno ? ' (line ' + e.lineno + ':' + e.colno + ')' : ''));
+    }, true);
+    setTimeout(function () {
+      if (window.__csBooting) return;
+      var b = document.getElementById('boot');
+      if (b) b.innerHTML = 'Courtside did not start<small>' + (errs.length ? errs.slice(0, 3).join('<br>').replace(/</g, '&lt;').replace(/&lt;br>/g, '<br>') : 'No error was reported. Please reload the page.') + '</small>';
+    }, 15000);
+  })();
+</script>
 <!-- CrazyGames HTML5 SDK v3: initialised by the game before it loads anything -->
 <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
 </head>
@@ -36,20 +55,14 @@ const html = `<!doctype html>
 <div id="ui"></div>
 <div id="boot">Loading&hellip;</div>
 <script>
-  // a safety net: if game.js never ran (missing from the upload, or blocked), say so
-  // instead of showing "Loading" for ever
-  setTimeout(function () {
-    if (window.__csBooting) return;
-    var b = document.getElementById('boot');
-    if (b) b.innerHTML = 'game.js did not load<br><small style="font-size:14px;letter-spacing:0;text-transform:none">Upload index.html and game.js together (courtside-crazygames.zip).</small>';
-  }, 12000);
+${game}
 </script>
-<script src="game.js"></script>
 </body>
 </html>
 `;
+fs.rmSync(up, { recursive: true, force: true });
+fs.mkdirSync(up, { recursive: true });
 fs.writeFileSync(path.join(up, 'index.html'), html);
-fs.copyFileSync(path.join(root, 'dist/game.js'), path.join(up, 'game.js'));
 
 // a plain zip (deflate) with the files at its root, no folder around them
 const crcTable = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -79,7 +92,7 @@ function zip(files) {
   end.writeUInt32LE(cenSize, 12); end.writeUInt32LE(offset, 16);
   return Buffer.concat([...parts, ...central, end]);
 }
-const files = ['index.html', 'game.js'].map((f) => [f, fs.readFileSync(path.join(up, f))]);
+const files = ['index.html'].map((f) => [f, fs.readFileSync(path.join(up, f))]);
 const zipPath = path.join(out, 'courtside-crazygames.zip');
 fs.writeFileSync(zipPath, zip(files));
 const kb = (n) => `${(n / 1024).toFixed(0)} KB`;

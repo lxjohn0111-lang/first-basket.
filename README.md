@@ -36,7 +36,7 @@ The HUD, radar and every screen (the career hub included) fit a phone in landsca
 
 ## CrazyGames
 
-`npm run crazygames` writes `crazygames/upload/` (`index.html` with the CrazyGames HTML5 SDK v3, and `game.js`) and `crazygames/courtside-crazygames.zip` (upload this). On CrazyGames:
+`npm run crazygames` writes `crazygames/upload/index.html` (the whole game in one file: the CrazyGames HTML5 SDK v3 script tag and the bundled game inlined) and `crazygames/courtside-crazygames.zip` (upload this). On CrazyGames:
 - progress is saved through the SDK's data module (career, My Player, records, settings, style, tutorial), so it follows logged-in players across devices;
 - gameplayStart and gameplayStop follow real play, and a win or a finished tutorial is a happytime;
 - the platform's mute silences the game;
@@ -125,7 +125,7 @@ node tests/human.mjs 4 3v3 pro    # half-court games with the scripted player
 node tests/shooting.mjs 75        # make rates by distance and release timing
 ```
 
-Browser checks (Playwright with Chromium, `node server.js` running; screenshots in `tests/out/`): `tests/tutorial.mjs` (the first visit played through with the real controls, "Are you ready?" into a 5v5 game, Skip, a second visit, a phone), `tests/crazygames.mjs` (the CrazyGames build with a stand-in SDK: data-module saves and reloads, gameplay events, happytime, mute, the locked name, no ads, a slow SDK that is connected late, a missing game.js explained on the loading screen, the localStorage fallbacks; run `npm run crazygames` first), `tests/crazygames-real.mjs` (the same build with the real SDK from sdk.crazygames.com, inside an emulated CrazyGames page and on another host), `tests/flow.mjs` (every menu; a full-court game from the tip-off to the result and box score; pause/settings/style/how-to; My Player persistence; half-court 1v1; a career from player creation through the hub tabs, training, a played game to its report, a simulated game and retiring; the Practice Court drills and the Shootout; failing on any page error), `tests/shots.mjs` (menu and first-person views in both styles), `tests/mobile.mjs` (phone emulation: touch controls and compact HUD).
+Browser checks (Playwright with Chromium, `node server.js` running; screenshots in `tests/out/`): `tests/tutorial.mjs` (the first visit played through with the real controls, "Are you ready?" into a 5v5 game, Skip, a second visit, a phone), `tests/crazygames.mjs` (the CrazyGames build with a stand-in SDK: data-module saves and reloads, gameplay events, happytime, mute, the locked name, no ads, a slow SDK that is connected late, an error before the start shown on the loading screen, a blocked SDK script, the localStorage fallbacks; run `npm run crazygames` first), `tests/crazygames-real.mjs` (the same build with the real SDK from sdk.crazygames.com, inside an emulated CrazyGames page and on another host), `tests/flow.mjs` (every menu; a full-court game from the tip-off to the result and box score; pause/settings/style/how-to; My Player persistence; half-court 1v1; a career from player creation through the hub tabs, training, a played game to its report, a simulated game and retiring; the Practice Court drills and the Shootout; failing on any page error), `tests/shots.mjs` (menu and first-person views in both styles), `tests/mobile.mjs` (phone emulation: touch controls and compact HUD).
 
 ## Known simplifications
 

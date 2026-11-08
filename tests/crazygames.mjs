@@ -5,8 +5,9 @@
 // follow real play (pauses count as stops); happytime when a game is won; the platform
 // mute silences the game; the player's name is the CrazyGames username (or the guest
 // name); no ads are requested; a slow SDK never leaves the game loading for ever (it starts
-// without it and connects it when it is ready); a missing game.js is explained on the
-// loading screen; and on other domains ("disabled") or without the data module the game
+// without it and connects it when it is ready); anything that stops the game before it
+// starts is shown on the loading screen; a blocked SDK script doesn't stop the game; and
+// on other domains ("disabled") or without the data module the game
 // falls back to localStorage.
 // Needs `npm run crazygames` first and `node server.js` running. Usage: node tests/crazygames.mjs
 import { createRequire } from 'node:module';
@@ -159,15 +160,32 @@ const calls = (page) => page.evaluate(() => window.__cg.calls.slice());
   await ctx.close();
 }
 {
-  // game.js missing from the upload: the page says so instead of loading for ever
+  // something stops the game before it starts: the loading screen shows the browser's error
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
   await page.route('https://sdk.crazygames.com/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: fake }));
-  await page.route('**/crazygames/upload/game.js', (r) => r.fulfill({ status: 404, body: 'not found' }));
+  await page.route('**/crazygames/upload/index.html*', async (r) => {
+    const res = await r.fetch();
+    const html = (await res.text()).replace(/<script>\n\/\* Courtside[\s\S]*<\/script>\n<\/body>/, '<script>\nthrow new Error("test failure before start");\n</script>\n</body>');
+    r.fulfill({ response: res, body: html });
+  });
   await page.goto(`${BASE}?fps=4`);
-  await page.waitForTimeout(13500);
+  await page.waitForTimeout(16500);
   const txt = await page.evaluate(() => document.getElementById('boot') && document.getElementById('boot').textContent);
-  check('without game.js the loading screen explains what is missing', /game\.js did not load/.test(txt || ''), txt);
+  check('if the game cannot start, the loading screen shows why (not "Loading" for ever)', /did not start/i.test(txt || '') && /test failure before start/.test(txt || ''), txt);
+  await page.close();
+  await ctx.close();
+}
+{
+  // the SDK script itself can't be loaded (blocked): the game still starts, without it
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await ctx.addInitScript(() => { localStorage.setItem('courtside.tutorial', 'done'); });
+  const page = await ctx.newPage();
+  await page.route('https://sdk.crazygames.com/**', (r) => r.abort('blockedbyclient'));
+  await page.goto(`${BASE}?fps=4`);
+  await page.waitForFunction(() => window.__cs && window.__cs.screens.current, null, { timeout: 60000 });
+  const st = await page.evaluate(() => ({ env: window.__cs.platform.env, screen: window.__cs.screens.current }));
+  check('with the SDK script blocked the game still starts', st.env === 'none' && st.screen === 'menu', JSON.stringify(st));
   await page.close();
   await ctx.close();
 }
