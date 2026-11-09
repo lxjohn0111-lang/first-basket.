@@ -7,7 +7,7 @@ Everything needed to submit Courtside to CrazyGames (developer.crazygames.com).
 | `courtside-crazygames.zip` | **Upload this.** One file at the zip's root: `index.html`, the whole game (the SDK script tag and the game inlined), 0.9 MB. |
 | `upload/` | The same `index.html` unzipped, if you prefer to upload a folder or test locally. |
 | `video/courtside-landscape.mp4` | Gameplay video, landscape 1920x1080, 15.6 s, H.264, no audio. |
-| `video/courtside-portrait.mp4` | Gameplay video, portrait 1080x1920, 16 s, H.264, no audio. |
+| `video/courtside-portrait.mp4` | Gameplay video, portrait 1080x1620 (2:3), 16 s, H.264, no audio. |
 
 No cover images are included (not requested); the portal asks for them separately.
 
@@ -133,7 +133,7 @@ The loading screen says what is going on:
 ```sh
 npm run crazygames   # rebuilds dist/game.js, writes upload/ and the zip
 npm run video -- --seconds 16 --width 1920 --height 1080 --render-width 1280 --render-height 720 --out crazygames/video/courtside-landscape.mp4
-npm run video -- --seconds 16 --width 1080 --height 1920 --render-width 720 --render-height 1280 --out crazygames/video/courtside-portrait.mp4
+npm run video -- --seconds 16 --width 1080 --height 1620 --render-width 720 --render-height 1080 --out crazygames/video/courtside-portrait.mp4
 ```
 
 The video tool needs Playwright with Chromium and ffmpeg (libx264).
